@@ -1,0 +1,11 @@
+lidar_bridge:
+  ros__parameters:
+    port: /dev/ttyACM0
+    frame_id: laser
+    # YDLIDAR angles grow clockwise seen from above; the node converts them to
+    # the ROS convention (counter-clockwise). Still to be checked on the robot.
+    clockwise: true
+    # Rotation between the LiDAR's 0 degrees and the x axis of the laser frame
+    angle_offset_deg: 0.0
+    range_min: 0.12
+    range_max: 8.0

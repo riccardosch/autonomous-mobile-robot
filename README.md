@@ -6,9 +6,9 @@ An autonomous mobile robot built on a Raspberry Pi 5 and ROS 2. It uses a LiDAR 
 
 ```
 LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──▶ Raspberry Pi 5
-  (TX data)                       - packet parsing              - micro-ROS agent
-  (M_SCTR ◀── PWM)                - motor control               - /scan topic
-                                  - scan forwarding             - SLAM + wheel odometry
+  (TX data)                       - packet parsing              - ROS 2 Jazzy
+  (M_SCTR ◀── PWM)                - motor control               - lidar_bridge → /scan
+                                  - scan forwarding (binary)    - SLAM + wheel odometry
 ```
 
 ## Hardware
@@ -24,6 +24,7 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | Folder / file | Contents |
 |---|---|
 | [firmware_lidar/](firmware_lidar/) | PlatformIO firmware for the ESP32-C3 that reads the LiDAR |
+| [raspberry/](raspberry/) | ROS 2 workspace with the nodes that run on the Raspberry Pi |
 | [docs/devlog.md](docs/devlog.md) | Development log (chronological) |
 
 ## Project status
@@ -34,7 +35,7 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | LiDAR ↔ ESP32-C3 wiring | ✅ Done |
 | LiDAR test (throwaway sketch using the kaiaai/LDS library) | ✅ About 8.3 scans/s, consistent data |
 | ESP32-C3 firmware (parser + USB output) | ✅ Working on the hardware: ~8 scans/s, no checksum or CRC errors |
-| micro-ROS and `/scan` topic | ⏳ To do |
+| ROS 2 `/scan` topic (`lidar_bridge`, C++) | ✅ Published at ~8 Hz; angle convention still to check on the robot |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |

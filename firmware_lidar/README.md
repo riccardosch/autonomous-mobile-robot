@@ -160,6 +160,6 @@ The plot assumes 0° points forward (up) and angles grow clockwise, as in the YD
 scans/s 8.00 (lidar 7.9 Hz) | packets ok 1299, checksum err 0, framing err 0 | valid bins 319/360 | 0:381 90:132 180:644 270:140 mm | usb dropped 0
 ```
 
-### Next step
+### In ROS 2
 
-Phase 2 replaces the binary frame with micro-ROS publishing the `/scan` topic (`sensor_msgs/LaserScan`). The parser and the scan building stay the same.
+The binary frames are turned into the `/scan` topic by the `lidar_bridge` node on the Pi, see [raspberry/README.md](../raspberry/README.md). micro-ROS on the ESP32 was considered and set aside: for a USB sensor it adds complexity without a real benefit.

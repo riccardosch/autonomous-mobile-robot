@@ -5,6 +5,27 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-09: ROS 2 node for the LiDAR (`/scan`)
+
+### Done
+- **Decision: no micro-ROS for the LiDAR.** The ESP32 keeps sending the binary frames, and a ROS 2 node on the Pi turns them into `/scan`. It is less code, it reuses a protocol that is already tested, and the web viewer stays usable for debugging. micro-ROS can still be added later if the ESP32 has to do more (e.g. motors).
+- Turned `raspberry/` into the ROS 2 Jazzy workspace for all the Pi nodes.
+- Wrote the `lidar_bridge` package in C++: frame parser with CRC (no ROS dependency), POSIX serial port, node publishing `sensor_msgs/LaserScan` with sensor data QoS, parameter file and launch file.
+- 4 unit tests (gtest) on the parser: CRC check value, garbage before a frame, frames split across reads, bad CRC followed by a good frame. All pass.
+- Built with plain CMake (colcon is not installed yet) and tested with the ESP32 connected: `/scan` at 8.1 Hz, 360 rays, `scan_time` 0.122 s, ranges in metres with `inf` for no echo.
+
+### Problems
+- On start-up the node reported "Lost 2739 frames": the first frame read was an old one, left in the ESP32's USB buffer while nobody was reading the port. Fixed by dropping the first frame after every (re)open.
+
+### Next steps
+- `sudo apt install python3-colcon-common-extensions` and build the workspace with colcon.
+- Check the angle convention (`clockwise`, `angle_offset_deg`) with an object in front of and to the left of the LiDAR.
+- Static transform `base_link → laser` once the LiDAR position on the robot is known.
+- See the scan in RViz or Foxglove from the PC.
+- Udev rule for a stable port name (`/dev/lidar`).
+
+---
+
 ## 2026-10-09: First LiDAR firmware, working on the hardware
 
 ### Done
