@@ -18,7 +18,6 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | Raspberry Pi 5 | Onboard computer, ROS 2 | |
 | ESP32-C3 SuperMini | LiDAR ↔ Pi interface | Connected over USB-C |
 | LiDAR YDS2MD-1 (EAI) | 360° scanning | OEM variant of the YDLIDAR X2/X2L family. See [firmware_lidar/README.md](firmware_lidar/README.md) |
-| Dedicated 5V buck | LiDAR power supply | Still to add: the LiDAR's inrush current is about 0.5-0.6 A |
 
 ## Repository layout
 
@@ -34,7 +33,7 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | LiDAR identification and pinout | ✅ Done and verified |
 | LiDAR ↔ ESP32-C3 wiring | ✅ Done |
 | LiDAR test (throwaway sketch using the kaiaai/LDS library) | ✅ About 8.3 scans/s, consistent data |
-| ESP32-C3 firmware (parser + USB output) | ⏳ Not written yet |
+| ESP32-C3 firmware (parser + USB output) | ✅ Working on the hardware: ~8 scans/s, no checksum or CRC errors |
 | micro-ROS and `/scan` topic | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |

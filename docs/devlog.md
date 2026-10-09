@@ -5,6 +5,37 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-09: First LiDAR firmware, working on the hardware
+
+### Done
+- Created the PlatformIO project in `firmware_lidar/` (ESP32-C3, Arduino framework, native USB CDC) with three build environments: binary output, debug text, raw passthrough.
+- Wrote the X2 packet parser (`x2_parser.*`): header sync, check bits, XOR checksum, angle interpolation across 0°, distance-based angle correction.
+- Points are grouped into 360 one-degree bins per revolution (closest point wins) and sent as a binary frame with a CRC-16.
+- Wrote `tools/read_scan.py` to read and validate the frames on the Pi.
+- Tested the parser on the Pi (host build with g++) with synthetic packets: garbage before the header, wrap at 360°, corrupted checksum. CRC-16 in C matches Python's `binascii.crc_hqx`.
+- Installed PlatformIO on the Pi (after `sudo apt install python3.12-venv`), flashed and tested the three modes on the hardware, in this order:
+  - raw: about 7 KB/s, 274 `AA 55` headers in 3 s, 40 samples per packet;
+  - debug: 8.0 scans/s (the LiDAR reports 7.9 Hz), about 320 of 360 bins with an echo, stable distances, 0 checksum errors;
+  - binary: `read_scan.py` receives about 8 frames/s with no CRC errors and no lost frames.
+
+- Added `tools/scan_viewer.py`, a live web viewer of the scans (the Pi is headless, the page is opened from the PC). Tested against the hardware: about 7.8 scans/s reach the page, with no CRC errors or lost frames.
+
+### Learned
+- Reading the kaiaai/LDS source: for the X2/X2L the library leaves M_SCTR **floating** (pin as input), it does not generate a PWM. The 8.3 scans/s of the first test are the LiDAR's default speed. Driving M_SCTR HIGH stops the motor. The firmware keeps the pin floating by default. Measured today with the same setup: 7.9-8.0 scans/s.
+- In the ring start packet, `CT >> 1` is the scan frequency in 0.1 Hz units.
+
+### Problems
+- PlatformIO could not be installed at first: the system Python was missing the `venv` module. Fixed with `sudo apt install python3.12-venv`.
+- **Upload failing** with "No serial data received" right after esptool loaded its stub. Lowering the upload speed did not help; uploading with `--no-stub` works and is now set in `platformio.ini`. Likely cause, not yet confirmed: GPIO20 is also UART0 RX, which the bootloader listens on, and the LiDAR keeps sending data into it.
+- **Checksum errors when the Pi was not reading**: with the USB port closed, `Serial` writes blocked the loop for seconds and the LiDAR UART buffer overflowed (a scan rate of 0.33/s and a few checksum errors in the debug output). Fixed by writing to USB only when the whole frame fits in the buffer, and dropping it otherwise. Retested with the port closed for 8 s: 0 errors.
+
+### Next steps
+- Confirm the upload issue by flashing once with the LiDAR TX unplugged.
+- micro-ROS on the ESP32 and the `/scan` topic (`sensor_msgs/LaserScan`).
+- Dedicated 5V supply for the LiDAR.
+
+---
+
 ## 2026-10-09: LiDAR identification, wiring and first test
 
 ### Done
