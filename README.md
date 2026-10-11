@@ -72,7 +72,8 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels
 | Wheel motors, open loop (block 2) | ✅ Directions verified; 11.4-11.8 rad/s at full duty |
 | Wheel speed in rad/s (block 3) | ✅ Spread below 1% at ~7 rad/s |
 | Wheel speed PID (block 4) | ✅ Holds 2-8 rad/s within 0.01 rad/s; transients to retune on the ground |
-| Wheel command watchdog (block 5) | ⏳ To do |
+| Wheel command watchdog (block 5) | ✅ Wheels stop 0.5 s after the last command |
+| Wheel firmware: transients retuned on the ground, micro-ROS layer | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |

@@ -2,7 +2,7 @@
 
 Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N and reads their encoders. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (wheel JointState out, wheel speed targets in).
 
-> **Status (2026-10-11):** blocks 1-4 of 5 done. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s; its transients (overshoot from standstill, recovery after a hand brake) are still outside the target and will be retuned with the robot on the ground.
+> **Status (2026-10-11):** all 5 blocks of the core firmware done and tested with the wheels lifted. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s and the watchdog stops the wheels 0.5 s after the last command. Still open: the controller transients (overshoot from standstill, recovery after a hand brake), to retune with the robot on the ground; then the micro-ROS layer.
 
 | Block | Contents | Status |
 |---|---|---|
@@ -10,7 +10,7 @@ Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors 
 | 2 | Motors: PWM + direction on the L298N | ✅ Directions and signed ticks correct, no glitches with the motors on |
 | 3 | Wheel speed in rad/s | ✅ Spread 0.5-0.8% at ~7 rad/s; step response measured |
 | 4 | Per-wheel speed PID | ✅ Steady state within 0.01 rad/s, spread ≤ 0.4%. ⚠️ Overshoot 25-28% from standstill (target 10%): retune on the ground |
-| 5 | Command watchdog | ⏳ |
+| 5 | Command watchdog | ✅ Wheels stop 0.5 s after the last target |
 
 Every test run on the hardware, with the commit and files it used and the output that shows the result, is in the [test record](tests/README.md).
 
@@ -106,6 +106,26 @@ duty = feedforward + KP · error + integral, with feedforward = FF_OFFSET + |tar
 - After a hand brake the integral stays at its limit and, with KI = 0.20, empties slowly: +47% peak and ~1.6 s back to the target.
 - Without the robot's weight the inertia is far lower than on the floor, so the transients will be retuned with the robot on the ground. Keys `p`/`o` and `i`/`u` change KP and KI at run time for that.
 
+## Command watchdog
+
+In closed loop every `control_set_target()` call restarts a 0.5 s timer (`CMD_TIMEOUT_S`). When it runs out the control task itself sets both targets to 0 and the motors coast, so the wheels stop even if `loop()` or, later, the micro-ROS layer hangs. Open-loop duties (test key `5` only) are not watched.
+
+- On at boot (`CMD_WATCHDOG_ON_AT_BOOT`); key `w` toggles it for manual tests. With it on, keys `1`-`3` and `+`/`-` drive the wheels for 0.5 s only, and tests `6` and `7` refuse to start.
+- When it trips the firmware prints `watchdog: no target for 0.50 s, motors off`.
+
+### Commands from a script
+
+The firmware also accepts lines `v <left> <right>` (rad/s, ended by a newline). They are meant for programs, not for typing. [tools/cmd_sender.py](tools/cmd_sender.py) sends them at a fixed rate and prints what the ESP32 writes back; after Ctrl+C it keeps printing for 3 s, so you can see the watchdog stop the wheels:
+
+```bash
+python3 tools/cmd_sender.py                       # 4 rad/s on both wheels, 20 Hz
+python3 tools/cmd_sender.py --left 2 --right -2 --rate 10
+```
+
+Close `pio device monitor` first: only one program at a time can open the port.
+
+**Opening the port resets the ESP32**, even with DTR and RTS held released by the script: the firmware restarts in about a second with the motors off. The same will happen when the micro-ROS agent opens the port.
+
 ## Build and flash
 
 The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so that PlatformIO does not pick the LiDAR's ESP32-C3 (`/dev/ttyACM0`).
@@ -140,6 +160,7 @@ Single keys, no Enter needed:
 | `7` | Closed-loop step test: 4 rad/s from standstill for 2 s, prints 10-90% rise time, overshoot, steady error and PASS/FAIL |
 | `p` / `o` | KP × / ÷ 1.2 |
 | `i` / `u` | KI × / ÷ 1.2 |
+| `w` | Watchdog on / off (on at boot) |
 | `z` | Zero the displayed counters |
 
 Gains changed with `p`/`o`/`i`/`u` go back to the `config.h` values at reset.
@@ -152,7 +173,9 @@ While a test runs the periodic output stops and only `4` (abort) is accepted.
 
 **Speed test** (wheels lifted): `1`, wait 2 s, `6`. Pass: std ≤ 3% of the mean, mean within 1% of the tick-count mean and within max(3%, 0.1 rad/s) of the target, on both wheels.
 
-**Controller step test** (wheels lifted): `7` from standstill. Pass: rise ≤ 0.3 s, overshoot ≤ 10%, steady error within max(3%, 0.1 rad/s).
+**Controller step test** (wheels lifted): `w` (watchdog off), then `7` from standstill. Pass: rise ≤ 0.3 s, overshoot ≤ 10%, steady error within max(3%, 0.1 rad/s).
+
+**Watchdog test** (wheels lifted): with the watchdog on, `1` must stop by itself after ~0.5 s; `tools/cmd_sender.py` must keep the wheels turning, and Ctrl+C on it must stop them within 0.5 s.
 
 Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set the duty directly; see the [test record](tests/README.md).
 
@@ -167,6 +190,7 @@ Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set th
 | [src/velocity.h](src/velocity.h), [src/velocity.cpp](src/velocity.cpp) | Speed estimate: timed edges + low-pass filter |
 | [src/pid.h](src/pid.h), [src/pid.cpp](src/pid.cpp) | PI with feedforward, integral limit and clamping anti-windup; plain C++, also built on the PC by the simulation |
 | [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: speed estimate, speed controller, motor commands, recording for the tests |
+| [tools/cmd_sender.py](tools/cmd_sender.py) | Sends `v <left> <right>` targets at a fixed rate, for the watchdog test |
 | [tests/README.md](tests/README.md) | Test record |
 | [tests/sim/pid_sim.cpp](tests/sim/pid_sim.cpp) | PC simulation of the controller on a model of the wheel built from the tests |
 | [src/main.cpp](src/main.cpp) | Setup, test keys and their analysis, debug output |

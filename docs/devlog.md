@@ -5,6 +5,25 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-11: Wheel firmware, block 5 (watchdog): core firmware done
+
+### Done
+- Command watchdog in the control task: with no speed target for 0.5 s the targets go to 0 and the motors coast. It runs in the fixed-period task, so it also covers a hung `loop()` or, later, a hung micro-ROS layer.
+- The firmware accepts `v <left> <right>` lines from programs; [firmware_wheels/tools/cmd_sender.py](../firmware_wheels/tools/cmd_sender.py) sends them at a fixed rate. Key `w` toggles the watchdog for manual tests.
+- Test T5 passed: a single command stops after 0.5 s, 20 Hz commands keep the wheels turning (~21 s), and the wheels stop within 0.5 s of the last one.
+- This closes the core wheel firmware (blocks 1-5), all tested with the wheels lifted and recorded in the [test record](../firmware_wheels/tests/README.md).
+
+### Learned
+- Opening the serial port restarts the ESP32 even with DTR and RTS held released by the script. Harmless (it restarts with the motors off in about a second), but the micro-ROS agent will do the same.
+
+### Next steps
+- Mount the wheels on the robot and retune the controller transients on the ground (keys `p`/`o`, `i`/`u`; start with the integral limit at 0.10).
+- Refine `ENCODER_TICKS_PER_REV` by driving over a known distance.
+- Add the micro-ROS layer: JointState out at ~50 Hz, wheel speed targets in through `control_set_target()`.
+- Measure the encoder signal voltage with the wire disconnected (possible 5 V pull-up on a 3.3 V GPIO).
+
+---
+
 ## 2026-10-11: Wheel firmware, block 4 (speed controller) and test record
 
 ### Done

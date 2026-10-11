@@ -8,6 +8,7 @@ Every test run on the wheel firmware, with the code it was run on, the procedure
 | [T2](#t2-motor-directions-and-dead-zone) | 2026-10-11 | 2 | Motor directions, tick signs, reversal, dead zone | ✅ |
 | [T3](#t3-speed-estimate) | 2026-10-11 | 3 | Speed estimate stability, step response | ✅ PASS |
 | [T4](#t4-speed-controller) | 2026-10-11 | 4 | Speed controller: steady state, step, hand brake | ✅ steady state / ❌ transients (retune on the ground) |
+| [T5](#t5-command-watchdog) | 2026-10-11 | 5 | Wheels stop when the commands stop | ✅ PASS |
 
 ---
 
@@ -261,4 +262,50 @@ L  28811 ticks  w  +2.54 rad/s  target +4.00  duty +0.62  glitch 0 fast 0 | R  2
 L  29103 ticks  w  +5.89 rad/s  target +4.00  duty +0.37  glitch 0 fast 0 | R  29807 ticks  w  +4.04 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
 L  29424 ticks  w  +4.38 rad/s  target +4.00  duty +0.32  glitch 0 fast 0 | R  30071 ticks  w  +4.00 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
 L  29697 ticks  w  +4.06 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R  30334 ticks  w  +4.00 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
+```
+
+---
+
+## T5: Command watchdog
+
+| | |
+|---|---|
+| Firmware | commit `5c490b8` (block 5). Files: [src/control.cpp](../src/control.cpp) (watchdog in the control task), [src/main.cpp](../src/main.cpp) (`v` lines, key `w`), [src/config.h](../src/config.h) (`CMD_TIMEOUT_S` 0.5), [tools/cmd_sender.py](../tools/cmd_sender.py) |
+| Procedure | **T5.1:** watchdog on, key `1` once. **T5.2:** `python3 tools/cmd_sender.py` (4 rad/s at 20 Hz) for ~20 s, then Ctrl+C. **T5.3:** key `w` (watchdog off), key `1`, wait, key `4` |
+| Criterion | T5.1 and T5.2: the wheels stop by themselves within 0.5 s of the last target, with the watchdog message. T5.2: no stop while the script runs. T5.3: no stop until key `4` |
+| Result | ✅ PASS on all three |
+
+T5.1, a single target: the watchdog stops the wheels after 0.5 s (one line every 200 ms):
+
+```
+L      0 ticks  w  +0.00 rad/s  target +4.00  duty +0.61  glitch 0 fast 0 | R      0 ticks  w  +0.00 rad/s  target +4.00  duty +0.62  glitch 0 fast 0
+L     79 ticks  w  +5.06 rad/s  target +4.00  duty +0.28  glitch 0 fast 0 | R     78 ticks  w  +5.04 rad/s  target +4.00  duty +0.29  glitch 0 fast 0
+L    150 ticks  w  +4.25 rad/s  target +4.00  duty +0.32  glitch 0 fast 0 | R    149 ticks  w  +4.25 rad/s  target +4.00  duty +0.33  glitch 0 fast 0
+watchdog: no target for 0.50 s, motors off
+L    204 ticks  w  +2.32 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R    203 ticks  w  +2.33 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
+L    205 ticks  w  +0.07 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R    204 ticks  w  +0.07 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
+```
+
+T5.2, targets from the script: about 7000 ticks (~21 s) at 4.00 rad/s with no stop, then Ctrl+C. The board restarted when the script opened the port (first line):
+
+```
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+...
+L   7056 ticks  w  +3.99 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R   7052 ticks  w  +4.02 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
+^C
+--- stopped sending; the watchdog should stop the wheels (printing for 3 s more)
+L   7122 ticks  w  +4.01 rad/s  target +4.00  duty +0.30  glitch 0 fast 0 | R   7118 ticks  w  +4.01 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
+L   7187 ticks  w  +4.02 rad/s  target +4.00  duty +0.30  glitch 0 fast 0 | R   7184 ticks  w  +4.00 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
+watchdog: no target for 0.50 s, motors off
+L   7253 ticks  w  +4.00 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R   7250 ticks  w  +4.01 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
+L   7271 ticks  w  +0.40 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R   7267 ticks  w  +0.46 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
+```
+
+T5.3, watchdog off: the wheels run ~3.4 s on a single key press, until key `4` (no watchdog message):
+
+```
+watchdog off
+L     63 ticks  w  +5.15 rad/s  target +4.00  duty +0.28  glitch 0 fast 0 | R     62 ticks  w  +5.13 rad/s  target +4.00  duty +0.30  glitch 0 fast 0
+L   1134 ticks  w  +3.99 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R   1131 ticks  w  +3.99 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
+L   1189 ticks  w  +2.60 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R   1187 ticks  w  +2.58 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
 ```
