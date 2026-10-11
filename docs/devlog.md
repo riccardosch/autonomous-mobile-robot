@@ -5,6 +5,30 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-11: Wheel firmware, block 4 (speed controller) and test record
+
+### Done
+- PI speed controller with feedforward, one per wheel, in the 20 ms control task, which is now the only code that drives the motors. `control_set_target()` in rad/s is the entry point for the future micro-ROS layer.
+- Anti-windup by clamping, plus a limit on the integral; the output never opposes the target, because the encoder cannot read the direction.
+- Closed-loop test keys (`7` step test, `6` now also checks the error from the target) and run-time gain tuning (`p`/`o`, `i`/`u`).
+- A PC simulation of the controller ([firmware_wheels/tests/sim/pid_sim.cpp](../firmware_wheels/tests/sim/pid_sim.cpp)) that runs the firmware's own PI on a model of the wheel built from the tests.
+- A test record ([firmware_wheels/tests/README.md](../firmware_wheels/tests/README.md)): every hardware test with the commit and files used, procedure, criterion, result and the output lines that show it.
+
+### Learned
+- Steady state is excellent: error ≤ 0.01 rad/s and spread ≤ 0.7% from 2 to 8 rad/s, on both wheels.
+- The gains from lambda tuning (KP 0.067, KI 0.67) gave 34-35% overshoot from standstill. With a feedforward fitted on the measured duties and KI 0.20 it went down to 25-28%, still above the 10% target.
+- The cause is the static friction: from standstill a wheel starts only at duty 0.35, which already means ~4.5 rad/s with no load, so below that speed it starts with a jump whatever the gains. The simulation reproduced both versions within a few percent.
+- With the integral limited to ±0.20 and KI 0.20 the recovery after a hand brake got worse (+47% peak, ~1.6 s), as the simulation predicted.
+
+### Problems
+- Transients outside the agreed criteria with the wheels lifted. Decision: keep the steady-state behaviour and retune with the robot on the ground, where the inertia is much higher.
+
+### Next steps
+- Block 5: command watchdog (motors off if no command for ~0.5 s).
+- Retune the transients on the ground; the simulation suggests starting with the integral limit at 0.10.
+
+---
+
 ## 2026-10-11: Wheel firmware, block 3 (speed)
 
 ### Done

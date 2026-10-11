@@ -2,14 +2,14 @@
 
 Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N and reads their encoders. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (wheel JointState out, wheel speed targets in).
 
-> **Status (2026-10-11):** blocks 1-3 of 5 done: encoder counting, open-loop motor control and speed measurement verified on both wheels.
+> **Status (2026-10-11):** blocks 1-4 of 5 done. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s; its transients (overshoot from standstill, recovery after a hand brake) are still outside the target and will be retuned with the robot on the ground.
 
 | Block | Contents | Status |
 |---|---|---|
 | 1 | Encoder counters | ✅ 516.6 transitions per revolution, no glitches |
 | 2 | Motors: PWM + direction on the L298N | ✅ Directions and signed ticks correct, no glitches with the motors on |
 | 3 | Wheel speed in rad/s | ✅ Spread 0.5-0.8% at ~7 rad/s; step response measured |
-| 4 | Per-wheel speed PID | ⏳ |
+| 4 | Per-wheel speed PID | ✅ Steady state within 0.01 rad/s, spread ≤ 0.4%. ⚠️ Overshoot 25-28% from standstill (target 10%): retune on the ground |
 | 5 | Command watchdog | ⏳ |
 
 Every test run on the hardware, with the commit and files it used and the output that shows the result, is in the [test record](tests/README.md).
@@ -81,6 +81,31 @@ Results (2026-10-11, wheels lifted, duty 0.5):
 
 K is the steady speed divided by the duty; τ is the time to reach 63% of the steady speed (20 ms resolution).
 
+## Speed controller
+
+The control task runs one PI with feedforward per wheel, every 20 ms:
+
+duty = feedforward + KP · error + integral, with feedforward = FF_OFFSET + |target| / FF_GAIN (with the sign of the target).
+
+| Parameter | Value | Where it comes from |
+|---|---|---|
+| `PID_KP` | 0.067 duty per rad/s | Lambda tuning on the step test (K ≈ 15 rad/s per duty, τ = 0.10 s): KP = 1 / K |
+| `PID_KI` | 0.20 duty per rad | Lowered from KP / τ = 0.67, which gave 34% overshoot |
+| `PID_I_MAX` | ±0.20 duty | Limits the integral during a brake; also leaves room for a ~20% lower battery voltage |
+| `FF_OFFSET_LEFT/RIGHT` | 0.14 / 0.125 duty | Straight-line fit of the steady closed-loop duty at 2, 4, 6 and 8 rad/s |
+| `FF_GAIN_LEFT/RIGHT` | 21.6 / 19.0 rad/s per duty | Same fit; within 0.02 duty of every measured point |
+
+- **Anti-windup:** the integral stops when the duty is saturated and while a motor waits for its wheel to stop before reversing, and is limited to ±`PID_I_MAX`.
+- **Never against the target:** the duty is kept on the side of the target (≥ 0 for a forward target). The encoder cannot read the direction, so the controller never brakes by reversing: a wheel that is too fast coasts down.
+- A target of 0 switches the motor off and clears the integral.
+- `control_set_target(left, right)` in rad/s is the entry point the micro-ROS layer will use; `control_set_duty()` stays for the open-loop tests.
+
+**Known limits (wheels lifted, 2026-10-11):**
+
+- From standstill a wheel starts only at duty 0.35, which already gives ~4.5 rad/s with no load. For targets below that it starts with a jump: 25-28% overshoot on a 0 → 4 rad/s step whatever the gains (see the simulation in [tests/sim/](tests/sim/pid_sim.cpp)).
+- After a hand brake the integral stays at its limit and, with KI = 0.20, empties slowly: +47% peak and ~1.6 s back to the target.
+- Without the robot's weight the inertia is far lower than on the floor, so the transients will be retuned with the robot on the ground. Keys `p`/`o` and `i`/`u` change KP and KI at run time for that.
+
 ## Build and flash
 
 The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so that PlatformIO does not pick the LiDAR's ESP32-C3 (`/dev/ttyACM0`).
@@ -95,26 +120,29 @@ cd firmware_wheels
 
 ## Serial output and test keys
 
-Every 200 ms, one line per wheel pair (`w` is the filtered speed):
+Every 200 ms, one line per wheel pair (`w` is the filtered speed, `duty` the value applied to the bridge):
 
 ```
-L   1017 ticks  w  +7.21 rad/s  duty +0.50 (req +0.50)  glitch 0 fast 0 | R    964 ticks  w  +6.83 rad/s  duty +0.50 (req +0.50)  glitch 0 fast 0
+L   4846 ticks  w  +4.00 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R   4845 ticks  w  +4.00 rad/s  target +4.00  duty +0.33  glitch 0 fast 0
 ```
-
-`duty` is the value applied to the bridge, `req` the requested one: they differ while a reversal waits for the wheel to stop.
 
 Single keys, no Enter needed:
 
 | Key | Action |
 |---|---|
-| `1` | Both wheels forward at duty 0.5 |
-| `2` | Both wheels backward at duty 0.5 |
-| `3` | Left forward, right backward |
-| `4` | Stop |
-| `+` / `-` | Both wheels forward, duty up / down by 0.05 |
-| `5` | Step test: duty 0.5 from standstill for 2 s, prints steady speed, gain K and time constant τ |
-| `6` | Stability test: with the wheels turning, measures for 5 s and prints mean, spread and PASS/FAIL |
+| `1` | Both wheels forward at 4 rad/s |
+| `2` | Both wheels backward at 4 rad/s |
+| `3` | Left forward, right backward, 4 rad/s |
+| `4` | Stop (also aborts a test) |
+| `+` / `-` | Both wheels forward, target up / down by 1 rad/s (0 to 8) |
+| `5` | Open-loop step test: duty 0.5 from standstill for 2 s, prints steady speed, gain K and time constant τ |
+| `6` | Stability test: with the wheels turning, measures for 5 s and prints mean, spread, error from the target and PASS/FAIL |
+| `7` | Closed-loop step test: 4 rad/s from standstill for 2 s, prints 10-90% rise time, overshoot, steady error and PASS/FAIL |
+| `p` / `o` | KP × / ÷ 1.2 |
+| `i` / `u` | KI × / ÷ 1.2 |
 | `z` | Zero the displayed counters |
+
+Gains changed with `p`/`o`/`i`/`u` go back to the `config.h` values at reset.
 
 While a test runs the periodic output stops and only `4` (abort) is accepted.
 
@@ -122,7 +150,11 @@ While a test runs the periodic output stops and only `4` (abort) is accepted.
 
 **Motor test** (wheels lifted): `1` turns both wheels forward with rising ticks, `2` backward with falling ticks, `3` in opposite directions, `4` stops them. `glitch` and `fast` stay at 0.
 
-**Speed test** (wheels lifted): `1`, wait 2 s, `6`. Pass: std ≤ 3% of the mean and mean within 1% of the tick-count mean, on both wheels.
+**Speed test** (wheels lifted): `1`, wait 2 s, `6`. Pass: std ≤ 3% of the mean, mean within 1% of the tick-count mean and within max(3%, 0.1 rad/s) of the target, on both wheels.
+
+**Controller step test** (wheels lifted): `7` from standstill. Pass: rise ≤ 0.3 s, overshoot ≤ 10%, steady error within max(3%, 0.1 rad/s).
+
+Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set the duty directly; see the [test record](tests/README.md).
 
 ## Code layout
 
@@ -133,5 +165,8 @@ While a test runs the periodic output stops and only `4` (abort) is accepted.
 | [src/encoders.h](src/encoders.h), [src/encoders.cpp](src/encoders.cpp) | Encoder interrupts, consistent snapshot of counts and edge times |
 | [src/motors.h](src/motors.h), [src/motors.cpp](src/motors.cpp) | L298N driver: duty to PWM and direction, safe reversal |
 | [src/velocity.h](src/velocity.h), [src/velocity.cpp](src/velocity.cpp) | Speed estimate: timed edges + low-pass filter |
-| [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: position and speed of each wheel, recording for the tests |
+| [src/pid.h](src/pid.h), [src/pid.cpp](src/pid.cpp) | PI with feedforward, integral limit and clamping anti-windup; plain C++, also built on the PC by the simulation |
+| [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: speed estimate, speed controller, motor commands, recording for the tests |
+| [tests/README.md](tests/README.md) | Test record |
+| [tests/sim/pid_sim.cpp](tests/sim/pid_sim.cpp) | PC simulation of the controller on a model of the wheel built from the tests |
 | [src/main.cpp](src/main.cpp) | Setup, test keys and their analysis, debug output |

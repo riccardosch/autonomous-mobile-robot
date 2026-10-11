@@ -50,9 +50,6 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels
 ~/.platformio/penv/bin/pio run -t upload --upload-port /dev/ttyUSB0
 ~/.platformio/penv/bin/pio device monitor --port /dev/ttyUSB0
 
-
-
-
 ## Repository layout
 
 | Folder / file | Contents |
@@ -74,7 +71,8 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels
 | Wheel encoders (ESP32 firmware, block 1) | ✅ Counting verified on both wheels: 516.6 transitions per revolution |
 | Wheel motors, open loop (block 2) | ✅ Directions verified; 11.4-11.8 rad/s at full duty |
 | Wheel speed in rad/s (block 3) | ✅ Spread below 1% at ~7 rad/s |
-| Wheel speed PID, watchdog (blocks 4-5) | ⏳ To do |
+| Wheel speed PID (block 4) | ✅ Holds 2-8 rad/s within 0.01 rad/s; transients to retune on the ground |
+| Wheel command watchdog (block 5) | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |
