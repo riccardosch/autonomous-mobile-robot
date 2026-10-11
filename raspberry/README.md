@@ -44,6 +44,16 @@ ros2 topic hz /scan                                         # about 8 Hz
 ros2 topic echo --once /scan --no-arr                       # header and scan geometry
 ```
 
+### Viewing the scan in RViz2
+
+The Pi is headless: RViz2 runs on a PC with ROS 2 Jazzy on the same network (same `ROS_DOMAIN_ID`). Verified working on 2026-10-09.
+
+1. On the PC: `ros2 topic hz /scan` should show about 8 Hz. If it does not, the data is not reaching the PC (firewall, network).
+2. `rviz2`, then *Global Options* → **Fixed Frame** = `laser` (there is no TF tree yet).
+3. *Add* → *By topic* → `/scan` → **LaserScan**.
+4. In the LaserScan display, *Topic* → **Reliability Policy** = **Best Effort**. The node publishes best effort, so with the default (Reliable) RViz receives nothing.
+5. Optional: *Size (m)* about 0.03-0.05 and a bright *FlatColor* to make the points easier to see.
+
 ### Topic
 
 | Topic | Type | QoS |
