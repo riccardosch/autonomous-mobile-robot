@@ -5,6 +5,28 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-11: Wheel firmware, block 2 (motors)
+
+### Done
+- L298N driver: a duty in [-1, 1] sets direction and 1 kHz PWM; the left motor is inverted in software.
+- The encoder counts are now signed: the motor driver tells the encoders which direction it drives.
+- Safe reversal: on a direction change the PWM goes to 0 and the new direction is applied only after 50 ms with no encoder edge, so the ticks of the coasting wheel keep the right sign.
+- Test keys on the serial monitor (1-4, +, -, z), without Enter.
+
+### Learned
+- Directions and tick signs are correct on both wheels; no glitches or fast edges with the motors on, up to full duty.
+- Open-loop speed: about 7 rad/s at duty 0.5 and 11.4-11.8 rad/s at full duty. The 8 rad/s target needs a duty of about 0.6.
+- From standstill both wheels start at a duty of about 0.35; once turning they keep going down to 0.10-0.15.
+- The left wheel is 3-7% faster than the right one at the same duty (the earlier notes said 10-15%).
+
+### Problems
+- Line-based commands (`d 0.5 0.5` + Enter) were awkward to type in the PlatformIO monitor; replaced by single keys.
+
+### Next steps
+- Block 3: wheel speed in rad/s (timed edges + low-pass filter) in a fixed-period FreeRTOS task, plus a step test to get the motor gain and time constant for the PID.
+
+---
+
 ## 2026-10-11: Wheel firmware, block 1 (encoders)
 
 ### Done
@@ -22,7 +44,6 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 - A first one-revolution test gave 840 ticks on the left wheel. Repeated over 5 revolutions it gave ~516 like the right one: it was a mistake in the procedure, not a wiring fault.
 
 ### Next steps
-- Block 2: L298N motor driver (PWM + direction), with a configurable inversion for the left motor.
 - Measure the encoder signal voltage with the signal wire disconnected, to rule out a 5 V pull-up on a 3.3 V GPIO.
 
 ---

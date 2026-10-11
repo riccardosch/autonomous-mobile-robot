@@ -11,6 +11,7 @@ struct EncoderState {
   volatile uint32_t last_edge_us;
   volatile uint32_t glitches;
   volatile uint32_t fast;
+  volatile int8_t direction;  // +1 or -1, added to ticks at every edge
 };
 
 EncoderState state[WHEEL_COUNT] = {};
@@ -27,7 +28,7 @@ void IRAM_ATTR on_edge(EncoderState &s) {
     s.glitches++;
   } else {
     if (interval < ENCODER_FAST_US) s.fast++;
-    s.ticks++;
+    s.ticks += s.direction;
     s.last_edge_us = now;
   }
   portEXIT_CRITICAL_ISR(&mux);
@@ -39,6 +40,7 @@ void IRAM_ATTR isr_right() { on_edge(state[WHEEL_RIGHT]); }
 }  // namespace
 
 void encoders_begin() {
+  for (int i = 0; i < WHEEL_COUNT; i++) state[i].direction = 1;
   pinMode(PIN_ENC_LEFT, INPUT_PULLUP);
   pinMode(PIN_ENC_RIGHT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_LEFT), isr_left, CHANGE);
@@ -63,5 +65,11 @@ void encoders_reset() {
     state[i].glitches = 0;
     state[i].fast = 0;
   }
+  portEXIT_CRITICAL(&mux);
+}
+
+void encoders_set_direction(Wheel wheel, int8_t direction) {
+  portENTER_CRITICAL(&mux);
+  state[wheel].direction = direction;
   portEXIT_CRITICAL(&mux);
 }

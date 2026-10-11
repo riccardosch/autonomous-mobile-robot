@@ -46,6 +46,12 @@ The LiDAR's 4-wire connector goes to the ESP32-C3 SuperMini: TX → GPIO20, M_SC
 
 The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from the ESP32. Top left: the encoder on the back of a wheel motor. Bottom left: the ESP32 ↔ BMI160 wiring on its own.
 
+cd ~/agv/autonomous-mobile-robot/firmware_wheels
+~/.platformio/penv/bin/pio run -t upload --upload-port /dev/ttyUSB0
+~/.platformio/penv/bin/pio device monitor --port /dev/ttyUSB0
+
+
+
 ## Repository layout
 
 | Folder / file | Contents |
@@ -65,7 +71,8 @@ The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from
 | ESP32-C3 firmware (parser + USB output) | ✅ Working on the hardware: ~8 scans/s, no checksum or CRC errors |
 | ROS 2 `/scan` topic (`lidar_bridge`, C++) | ✅ Published at ~8 Hz; angle convention still to check on the robot |
 | Wheel encoders (ESP32 firmware, block 1) | ✅ Counting verified on both wheels: 516.6 transitions per revolution |
-| Wheel motors, speed estimate, PID, watchdog (blocks 2-5) | ⏳ To do |
+| Wheel motors, open loop (block 2) | ✅ Directions verified; 11.4-11.8 rad/s at full duty |
+| Wheel speed estimate, PID, watchdog (blocks 3-5) | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |
