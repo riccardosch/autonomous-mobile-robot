@@ -12,6 +12,8 @@ Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors 
 | 4 | Per-wheel speed PID | ⏳ |
 | 5 | Command watchdog | ⏳ |
 
+Every test run on the hardware, with the commit and files it used and the output that shows the result, is in the [test record](tests/README.md).
+
 ## Wiring
 
 See the diagram and pin table in the [main README](../README.md#wheels). All pins are set in [src/config.h](src/config.h).
