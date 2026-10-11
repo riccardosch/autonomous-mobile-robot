@@ -51,6 +51,7 @@ The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from
 | Folder / file | Contents |
 |---|---|
 | [firmware_lidar/](firmware_lidar/) | PlatformIO firmware for the ESP32-C3 that reads the LiDAR |
+| [firmware_wheels/](firmware_wheels/) | PlatformIO firmware for the ESP32 that drives the wheel motors and reads the encoders |
 | [raspberry/](raspberry/) | ROS 2 workspace with the nodes that run on the Raspberry Pi |
 | [docs/devlog.md](docs/devlog.md) | Development log (chronological) |
 
@@ -63,6 +64,8 @@ The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from
 | LiDAR test (throwaway sketch using the kaiaai/LDS library) | ✅ About 8.3 scans/s, consistent data |
 | ESP32-C3 firmware (parser + USB output) | ✅ Working on the hardware: ~8 scans/s, no checksum or CRC errors |
 | ROS 2 `/scan` topic (`lidar_bridge`, C++) | ✅ Published at ~8 Hz; angle convention still to check on the robot |
+| Wheel encoders (ESP32 firmware, block 1) | ✅ Counting verified on both wheels: 516.6 transitions per revolution |
+| Wheel motors, speed estimate, PID, watchdog (blocks 2-5) | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |

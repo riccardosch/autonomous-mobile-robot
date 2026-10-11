@@ -5,6 +5,28 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-11: Wheel firmware, block 1 (encoders)
+
+### Done
+- Planned the wheel firmware for a second ESP32 (DevKit, 38 pins) in five blocks, each tested on the hardware before the next: encoders, motors, speed estimate, per-wheel PID, command watchdog. No ROS in this phase: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (JointState out, wheel speed targets in; odometry stays in `diff_drive_controller` on the Pi).
+- Created `firmware_wheels/` (PlatformIO, `esp32dev`, `espressif32@6.9.0` as in the LiDAR firmware).
+- Block 1: interrupt-driven counters for the two single-channel Hall encoders (CHANGE, both edges), with a 100 µs glitch filter and a "fast edge" counter (edges closer than 500 µs, impossible at the robot's speeds) to spot a noisy signal.
+- Added the LiDAR and wheels wiring diagrams to the READMEs.
+
+### Learned
+- Encoder wiring: grey = GND, white = 5 V (from the ESP32 VIN), green = signal to GPIO18 (left) / GPIO19 (right).
+- Measured **516.6 transitions per wheel revolution**: 4 runs of 5 revolutions turned by hand (right 511.4 and 515.6, left 524.2 and 515.0), no glitches and no fast edges. Both wheels give the same value within the hand alignment error. The iRobot Create figure (508.8) is 1.5% lower.
+
+### Problems
+- **Upload failing** with "No serial data received" right after esptool switched to 460800 baud. Uploading at 115200 works and is now set in `platformio.ini`.
+- A first one-revolution test gave 840 ticks on the left wheel. Repeated over 5 revolutions it gave ~516 like the right one: it was a mistake in the procedure, not a wiring fault.
+
+### Next steps
+- Block 2: L298N motor driver (PWM + direction), with a configurable inversion for the left motor.
+- Measure the encoder signal voltage with the signal wire disconnected, to rule out a 5 V pull-up on a 3.3 V GPIO.
+
+---
+
 ## 2026-10-09: ROS 2 node for the LiDAR (`/scan`)
 
 ### Done
