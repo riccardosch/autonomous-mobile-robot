@@ -87,6 +87,12 @@ constexpr float FF_GAIN_RIGHT = 19.0f;     // rad/s per unit duty
 
 constexpr float SPEED_MAX = 8.0f;  // rad/s, targets are clamped to +-SPEED_MAX
 
+// ---- Command watchdog ----
+// In closed loop, with no new target for this long the targets go to 0 and
+// the motors coast. Open-loop duties (tests only) are not watched.
+constexpr float CMD_TIMEOUT_S = 0.5f;
+constexpr bool CMD_WATCHDOG_ON_AT_BOOT = true;  // key w toggles it at run time
+
 // ---- Test keys ----
 constexpr float TEST_DUTY = 0.5f;         // open-loop duty of the step test (key 5)
 constexpr float TEST_SPEED = 4.0f;        // rad/s, target of keys 1-3 and of key 7

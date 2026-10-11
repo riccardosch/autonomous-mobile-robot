@@ -23,11 +23,18 @@ constexpr int RECORD_MAX_SAMPLES = 256;
 void control_begin();
 
 // Closed loop: target speed of each wheel in rad/s, clamped to +-SPEED_MAX.
-// A target of 0 turns the motor off.
+// A target of 0 turns the motor off. Each call also feeds the watchdog: with
+// no call for CMD_TIMEOUT_S the targets go to 0.
 void control_set_target(float left, float right);
 
 // Open loop: duty of each wheel in [-1, 1], for the tests.
 void control_set_duty(float left, float right);
+
+// Command watchdog, on at boot if CMD_WATCHDOG_ON_AT_BOOT.
+void control_set_watchdog(bool on);
+bool control_watchdog_on();
+// True from a watchdog stop until the next target.
+bool control_watchdog_tripped();
 
 // Speed controller gains, shared by both wheels. Start from PID_KP and PID_KI.
 void control_set_gains(float kp, float ki);

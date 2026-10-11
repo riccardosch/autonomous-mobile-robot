@@ -11,6 +11,7 @@ namespace {
 
 constexpr float RAD_PER_TICK = 2.0f * PI / ENCODER_TICKS_PER_REV;
 constexpr uint32_t PERIOD_MS = static_cast<uint32_t>(CONTROL_PERIOD_S * 1000.0f + 0.5f);
+constexpr uint32_t CMD_TIMEOUT_MS = static_cast<uint32_t>(CMD_TIMEOUT_S * 1000.0f + 0.5f);
 
 static_assert(STABILITY_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
               "stability test longer than the record buffer");
@@ -28,6 +29,9 @@ PiState pi[WHEEL_COUNT] = {};
 // Shared between the control task (core 0) and loop() (core 1).
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 bool closed_loop = false;
+bool watchdog_on = CMD_WATCHDOG_ON_AT_BOOT;
+bool watchdog_tripped = false;
+uint32_t last_target_ms = 0;
 PiGains gains = {PID_KP, PID_KI, PID_I_MAX};
 float command[WHEEL_COUNT] = {};  // rad/s in closed loop, duty in open loop
 WheelState state[WHEEL_COUNT] = {};
@@ -62,7 +66,13 @@ void control_task(void *) {
     VelocityEstimate v[WHEEL_COUNT];
     velocity_update(enc, micros(), v);
 
+    const uint32_t now_ms = millis();
     portENTER_CRITICAL(&mux);
+    const bool moving = command[WHEEL_LEFT] != 0.0f || command[WHEEL_RIGHT] != 0.0f;
+    if (closed_loop && watchdog_on && moving && now_ms - last_target_ms > CMD_TIMEOUT_MS) {
+      for (int w = 0; w < WHEEL_COUNT; w++) command[w] = 0.0f;
+      watchdog_tripped = true;
+    }
     const bool closed = closed_loop;
     const PiGains g = gains;
     float cmd[WHEEL_COUNT];
@@ -111,6 +121,8 @@ void control_set_target(float left, float right) {
   closed_loop = true;
   command[WHEEL_LEFT] = constrain(left, -SPEED_MAX, SPEED_MAX);
   command[WHEEL_RIGHT] = constrain(right, -SPEED_MAX, SPEED_MAX);
+  last_target_ms = millis();
+  watchdog_tripped = false;
   portEXIT_CRITICAL(&mux);
 }
 
@@ -120,6 +132,27 @@ void control_set_duty(float left, float right) {
   command[WHEEL_LEFT] = constrain(left, -1.0f, 1.0f);
   command[WHEEL_RIGHT] = constrain(right, -1.0f, 1.0f);
   portEXIT_CRITICAL(&mux);
+}
+
+void control_set_watchdog(bool on) {
+  portENTER_CRITICAL(&mux);
+  watchdog_on = on;
+  last_target_ms = millis();  // a full timeout before it can trip
+  portEXIT_CRITICAL(&mux);
+}
+
+bool control_watchdog_on() {
+  portENTER_CRITICAL(&mux);
+  const bool on = watchdog_on;
+  portEXIT_CRITICAL(&mux);
+  return on;
+}
+
+bool control_watchdog_tripped() {
+  portENTER_CRITICAL(&mux);
+  const bool tripped = watchdog_tripped;
+  portEXIT_CRITICAL(&mux);
+  return tripped;
 }
 
 void control_set_gains(float kp, float ki) {

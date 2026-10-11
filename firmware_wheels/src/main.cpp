@@ -1,7 +1,9 @@
 // Wheel firmware for the ESP32 DevKit.
 //
-// Block 4: closed-loop wheel speed (PI + feedforward) commanded from the
-// serial monitor. Single keys, no Enter needed:
+// Block 5: closed-loop wheel speed (PI + feedforward) with a command
+// watchdog, commanded from the serial monitor or from tools/cmd_sender.py.
+// Lines "v <left> <right>" (rad/s, ended by a newline) set the targets; they
+// are meant for scripts. Single keys, no Enter needed:
 //   1  both wheels forward at TEST_SPEED
 //   2  both wheels backward at TEST_SPEED
 //   3  left forward, right backward
@@ -13,6 +15,8 @@
 //      and, in closed loop, the error from the target
 //   7  closed-loop step test: TEST_SPEED from standstill, prints rise time, overshoot, error
 //   p/o  KP up/down by TUNE_FACTOR      i/u  KI up/down by TUNE_FACTOR
+//   w  watchdog on/off (on at boot): with it on, keys 1-3 and +/- drive the
+//      wheels only for CMD_TIMEOUT_S; tests 6 and 7 need it off
 //   z  zero the displayed tick and glitch counters
 
 #include <Arduino.h>
@@ -31,6 +35,9 @@ const char *const WHEEL_NAMES[WHEEL_COUNT] = {"L", "R"};
 unsigned long last_print_ms = 0;
 float step_target = 0.0f;  // target set by the + and - keys
 Test running = Test::NONE;
+bool was_tripped = false;
+char line[32];      // "v <left> <right>" being received
+int line_len = -1;  // -1: not receiving a line
 EncoderSnapshot zero[WHEEL_COUNT] = {};  // counters at the last 'z'
 
 int periods(float seconds) { return lroundf(seconds / CONTROL_PERIOD_S); }
@@ -57,6 +64,11 @@ bool wheels_driven() {
   return true;
 }
 
+bool watchdog_off(const char *name) {
+  if (control_watchdog_on()) Serial.printf("%s: turn the watchdog off first (key w)\n", name);
+  return !control_watchdog_on();
+}
+
 bool start_from_standstill(Test test, float seconds, const char *name) {
   if (!wheels_stopped()) {
     Serial.printf("%s: stop the wheels first (key 4) and wait for them to stand still\n", name);
@@ -69,6 +81,7 @@ bool start_from_standstill(Test test, float seconds, const char *name) {
 }
 
 void start_stability_test() {
+  if (!watchdog_off("stability test")) return;
   if (!wheels_driven()) {
     Serial.println("stability test: start the wheels first (e.g. key 1) and wait 2 s");
     return;
@@ -166,9 +179,31 @@ void tune(char key) {
   Serial.printf("gains: KP %.4f  KI %.4f\n", kp, ki);
 }
 
+// A "v <left> <right>" line from a script.
+void handle_line_char(char c) {
+  if (c != '\n' && c != '\r') {
+    if (line_len < static_cast<int>(sizeof(line)) - 1) line[line_len++] = c;
+    return;
+  }
+  line[line_len] = '\0';
+  line_len = -1;
+  float left, right;
+  if (running == Test::NONE && sscanf(line, "%f %f", &left, &right) == 2) {
+    control_set_target(left, right);
+  }
+}
+
 void handle_serial() {
   while (Serial.available() > 0) {
     const char key = Serial.read();
+    if (line_len >= 0) {
+      handle_line_char(key);
+      continue;
+    }
+    if (key == 'v') {
+      line_len = 0;
+      continue;
+    }
     if (key == '4') {
       control_set_target(0.0f, 0.0f);
       step_target = 0.0f;
@@ -197,15 +232,28 @@ void handle_serial() {
         break;
       case '6': start_stability_test(); break;
       case '7':
-        if (start_from_standstill(Test::CL_STEP, CL_STEP_TEST_DURATION_S, "closed-loop step test")) {
+        if (watchdog_off("closed-loop step test") && start_from_standstill(Test::CL_STEP, CL_STEP_TEST_DURATION_S, "closed-loop step test")) {
           control_set_target(TEST_SPEED, TEST_SPEED);
         }
         break;
       case 'p': case 'o': case 'i': case 'u': tune(key); break;
+      case 'w':
+        control_set_watchdog(!control_watchdog_on());
+        Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
+        break;
       case 'z': encoders_read(zero); break;
       default: break;
     }
   }
+}
+
+void check_watchdog() {
+  const bool tripped = control_watchdog_tripped();
+  if (tripped && !was_tripped) {
+    Serial.printf("watchdog: no target for %.2f s, motors off\n", CMD_TIMEOUT_S);
+    step_target = 0.0f;
+  }
+  was_tripped = tripped;
 }
 
 void check_test() {
@@ -241,13 +289,15 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   encoders_begin();
   control_begin();
-  Serial.println("wheel firmware, block 4: speed PID. Keys: 1 fwd, 2 back, 3 opposite, 4 stop, "
-                 "+/- target, 5 open-loop step, 6 stability, 7 closed-loop step, p/o KP, i/u KI, "
-                 "z zero counters");
+  Serial.println("wheel firmware, block 5: speed PID + watchdog. Keys: 1 fwd, 2 back, 3 opposite, "
+                 "4 stop, +/- target, 5 open-loop step, 6 stability, 7 closed-loop step, p/o KP, "
+                 "i/u KI, w watchdog on/off, z zero counters");
+  Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
 }
 
 void loop() {
   handle_serial();
+  check_watchdog();
   check_test();
   const unsigned long now = millis();
   if (running == Test::NONE && now - last_print_ms >= DEBUG_PERIOD_MS) {
