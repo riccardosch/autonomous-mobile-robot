@@ -84,12 +84,6 @@ void motors_set(Wheel wheel, float duty) {
   apply(wheel);
 }
 
-void motors_update() {
-  for (int w = 0; w < WHEEL_COUNT; w++) {
-    if (applied[w] != requested[w]) apply(w);
-  }
-}
-
 MotorStatus motors_status(Wheel wheel) {
   return {requested[wheel], applied[wheel]};
 }

@@ -13,10 +13,8 @@ struct MotorStatus {
 void motors_begin();
 
 // Requests a duty in [-1, 1]: the sign is the direction (+ = robot forward),
-// the magnitude the PWM. Values outside the range are clamped.
+// the magnitude the PWM. Values outside the range are clamped. A reversal is
+// completed only once the wheel has stopped, so call it every control period.
 void motors_set(Wheel wheel, float duty);
-
-// Completes a pending reversal once the wheel has stopped. Call it often.
-void motors_update();
 
 MotorStatus motors_status(Wheel wheel);

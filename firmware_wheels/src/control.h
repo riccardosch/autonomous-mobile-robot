@@ -6,6 +6,8 @@ struct WheelState {
   float position;      // rad since start, + = forward
   float velocity;      // rad/s, filtered
   float velocity_raw;  // rad/s, before the filter
+  float target;        // rad/s, 0 in open loop
+  float duty;          // duty applied to the bridge
 };
 
 // One sample per control period, recorded for the tests.
@@ -17,7 +19,19 @@ struct RecordedSample {
 constexpr int RECORD_MAX_SAMPLES = 256;
 
 // Starts the fixed-period control task (CONTROL_PERIOD_S, core CONTROL_TASK_CORE).
+// The task is the only one that drives the motors.
 void control_begin();
+
+// Closed loop: target speed of each wheel in rad/s, clamped to +-SPEED_MAX.
+// A target of 0 turns the motor off.
+void control_set_target(float left, float right);
+
+// Open loop: duty of each wheel in [-1, 1], for the tests.
+void control_set_duty(float left, float right);
+
+// Speed controller gains, shared by both wheels. Start from PID_KP and PID_KI.
+void control_set_gains(float kp, float ki);
+void control_get_gains(float &kp, float &ki);
 
 // Consistent copy of the latest state of both wheels.
 void control_get_state(WheelState out[WHEEL_COUNT]);

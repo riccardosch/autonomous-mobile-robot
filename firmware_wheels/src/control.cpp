@@ -3,6 +3,8 @@
 #include <Arduino.h>
 
 #include "config.h"
+#include "motors.h"
+#include "pid.h"
 #include "velocity.h"
 
 namespace {
@@ -14,15 +16,42 @@ static_assert(STABILITY_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES
               "stability test longer than the record buffer");
 static_assert(STEP_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
               "step test longer than the record buffer");
+static_assert(CL_STEP_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
+              "closed-loop step test longer than the record buffer");
+
+const float FF_OFFSET[WHEEL_COUNT] = {FF_OFFSET_LEFT, FF_OFFSET_RIGHT};
+const float FF_GAIN[WHEEL_COUNT] = {FF_GAIN_LEFT, FF_GAIN_RIGHT};
+
+// Used by the control task only.
+PiState pi[WHEEL_COUNT] = {};
 
 // Shared between the control task (core 0) and loop() (core 1).
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+bool closed_loop = false;
+PiGains gains = {PID_KP, PID_KI, PID_I_MAX};
+float command[WHEEL_COUNT] = {};  // rad/s in closed loop, duty in open loop
 WheelState state[WHEEL_COUNT] = {};
 RecordedSample samples[RECORD_MAX_SAMPLES];
 int record_target = 0;
 int record_count = 0;
 int32_t record_start_ticks[WHEEL_COUNT] = {};
 int32_t record_end_ticks[WHEEL_COUNT] = {};
+
+// Duty for one wheel. The output never opposes the target: the encoder cannot
+// read the direction, so the controller only drives towards the target and
+// lets the wheel coast if it is too fast.
+float speed_control(int w, float target, float measured, const PiGains &g) {
+  if (target == 0.0f) {
+    pi_reset(pi[w]);
+    return 0.0f;
+  }
+  const float ff = copysignf(FF_OFFSET[w] + fabsf(target) / FF_GAIN[w], target);
+  const MotorStatus m = motors_status(static_cast<Wheel>(w));
+  const bool reversing = m.applied != m.requested;  // waiting for the wheel to stop
+  const float out_min = target > 0.0f ? 0.0f : -1.0f;
+  const float out_max = target > 0.0f ? 1.0f : 0.0f;
+  return pi_update(pi[w], g, target, measured, ff, CONTROL_PERIOD_S, out_min, out_max, reversing);
+}
 
 void control_task(void *) {
   TickType_t wake = xTaskGetTickCount();
@@ -34,8 +63,27 @@ void control_task(void *) {
     velocity_update(enc, micros(), v);
 
     portENTER_CRITICAL(&mux);
+    const bool closed = closed_loop;
+    const PiGains g = gains;
+    float cmd[WHEEL_COUNT];
+    for (int w = 0; w < WHEEL_COUNT; w++) cmd[w] = command[w];
+    portEXIT_CRITICAL(&mux);
+
+    float duty[WHEEL_COUNT];
     for (int w = 0; w < WHEEL_COUNT; w++) {
-      state[w] = {enc[w].ticks * RAD_PER_TICK, v[w].filtered, v[w].raw};
+      if (closed) {
+        duty[w] = speed_control(w, cmd[w], v[w].filtered, g);
+      } else {
+        pi_reset(pi[w]);
+        duty[w] = cmd[w];
+      }
+      motors_set(static_cast<Wheel>(w), duty[w]);
+    }
+
+    portENTER_CRITICAL(&mux);
+    for (int w = 0; w < WHEEL_COUNT; w++) {
+      state[w] = {enc[w].ticks * RAD_PER_TICK, v[w].filtered, v[w].raw, closed ? cmd[w] : 0.0f,
+                  motors_status(static_cast<Wheel>(w)).applied};
     }
     if (record_count < record_target) {
       RecordedSample &s = samples[record_count];
@@ -56,6 +104,36 @@ void control_task(void *) {
 void control_begin() {
   xTaskCreatePinnedToCore(control_task, "control", CONTROL_TASK_STACK, nullptr,
                           CONTROL_TASK_PRIORITY, nullptr, CONTROL_TASK_CORE);
+}
+
+void control_set_target(float left, float right) {
+  portENTER_CRITICAL(&mux);
+  closed_loop = true;
+  command[WHEEL_LEFT] = constrain(left, -SPEED_MAX, SPEED_MAX);
+  command[WHEEL_RIGHT] = constrain(right, -SPEED_MAX, SPEED_MAX);
+  portEXIT_CRITICAL(&mux);
+}
+
+void control_set_duty(float left, float right) {
+  portENTER_CRITICAL(&mux);
+  closed_loop = false;
+  command[WHEEL_LEFT] = constrain(left, -1.0f, 1.0f);
+  command[WHEEL_RIGHT] = constrain(right, -1.0f, 1.0f);
+  portEXIT_CRITICAL(&mux);
+}
+
+void control_set_gains(float kp, float ki) {
+  portENTER_CRITICAL(&mux);
+  gains.kp = kp;
+  gains.ki = ki;
+  portEXIT_CRITICAL(&mux);
+}
+
+void control_get_gains(float &kp, float &ki) {
+  portENTER_CRITICAL(&mux);
+  kp = gains.kp;
+  ki = gains.ki;
+  portEXIT_CRITICAL(&mux);
 }
 
 void control_get_state(WheelState out[WHEEL_COUNT]) {
