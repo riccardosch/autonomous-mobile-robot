@@ -58,16 +58,6 @@ void encoders_read(EncoderSnapshot out[WHEEL_COUNT]) {
   portEXIT_CRITICAL(&mux);
 }
 
-void encoders_reset() {
-  portENTER_CRITICAL(&mux);
-  for (int i = 0; i < WHEEL_COUNT; i++) {
-    state[i].ticks = 0;
-    state[i].glitches = 0;
-    state[i].fast = 0;
-  }
-  portEXIT_CRITICAL(&mux);
-}
-
 void encoders_set_direction(Wheel wheel, int8_t direction) {
   portENTER_CRITICAL(&mux);
   state[wheel].direction = direction;

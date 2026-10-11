@@ -5,6 +5,23 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-11: Wheel firmware, block 3 (speed)
+
+### Done
+- Fixed-period FreeRTOS task on core 0 (20 ms) that computes the position and speed of each wheel.
+- Speed from timed encoder edges (M/T method) plus a 40 ms low-pass filter; zero after 100 ms without edges.
+- Removed the encoder counter reset: resetting the counters under the running speed estimate would produce a false speed spike. `z` now only zeroes the displayed numbers.
+- Two self-evaluating test keys: `5` step test (steady speed, gain, time constant) and `6` stability test (mean, spread, PASS/FAIL).
+
+### Learned
+- Stability at duty 0.5: left 7.28 rad/s with 0.5% spread, right 6.88 rad/s with 0.8%, both equal to the tick-count mean. Counting ticks per 20 ms would have given about ±10% at this speed.
+- Step test, 4 runs, very repeatable: K 14.7-15.0 (left) and 14.2-14.3 (right) rad/s per unit duty, time constant 0.10 s on both wheels.
+
+### Next steps
+- Block 4: per-wheel PI speed controller with feedforward, tuned from the step test.
+
+---
+
 ## 2026-10-11: Wheel firmware, block 2 (motors)
 
 ### Done
@@ -23,7 +40,7 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 - Line-based commands (`d 0.5 0.5` + Enter) were awkward to type in the PlatformIO monitor; replaced by single keys.
 
 ### Next steps
-- Block 3: wheel speed in rad/s (timed edges + low-pass filter) in a fixed-period FreeRTOS task, plus a step test to get the motor gain and time constant for the PID.
+- Block 3: wheel speed in rad/s, plus a step test to get the motor gain and time constant for the PID.
 
 ---
 

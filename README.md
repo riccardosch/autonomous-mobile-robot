@@ -52,6 +52,7 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels
 
 
 
+
 ## Repository layout
 
 | Folder / file | Contents |
@@ -72,7 +73,8 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels
 | ROS 2 `/scan` topic (`lidar_bridge`, C++) | ✅ Published at ~8 Hz; angle convention still to check on the robot |
 | Wheel encoders (ESP32 firmware, block 1) | ✅ Counting verified on both wheels: 516.6 transitions per revolution |
 | Wheel motors, open loop (block 2) | ✅ Directions verified; 11.4-11.8 rad/s at full duty |
-| Wheel speed estimate, PID, watchdog (blocks 3-5) | ⏳ To do |
+| Wheel speed in rad/s (block 3) | ✅ Spread below 1% at ~7 rad/s |
+| Wheel speed PID, watchdog (blocks 4-5) | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |

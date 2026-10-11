@@ -2,13 +2,13 @@
 
 Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N and reads their encoders. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (wheel JointState out, wheel speed targets in).
 
-> **Status (2026-10-11):** blocks 1 and 2 of 5 done: encoder counting and open-loop motor control verified on both wheels.
+> **Status (2026-10-11):** blocks 1-3 of 5 done: encoder counting, open-loop motor control and speed measurement verified on both wheels.
 
 | Block | Contents | Status |
 |---|---|---|
 | 1 | Encoder counters | ✅ 516.6 transitions per revolution, no glitches |
 | 2 | Motors: PWM + direction on the L298N | ✅ Directions and signed ticks correct, no glitches with the motors on |
-| 3 | Wheel speed in rad/s | ⏳ |
+| 3 | Wheel speed in rad/s | ✅ Spread 0.5-0.8% at ~7 rad/s; step response measured |
 | 4 | Per-wheel speed PID | ⏳ |
 | 5 | Command watchdog | ⏳ |
 
@@ -61,6 +61,24 @@ Open-loop results (2026-10-11, wheels lifted):
 - The left wheel is 3-7% faster than the right one at the same duty.
 - The 8 rad/s target speed needs a duty of about 0.6, which leaves margin for the speed controller.
 
+## Speed estimate
+
+A FreeRTOS task on core 0 runs every 20 ms (`vTaskDelayUntil`), reads the encoders and computes the position (rad) and speed (rad/s) of each wheel. `loop()` and, later, micro-ROS read them with `control_get_state()`.
+
+- **Timed edges (M/T method).** The speed is the ticks between the last edge of the previous period and the last edge of this one, divided by the time between those two edges. At 3 rad/s only ~5 ticks fall in 20 ms, so counting ticks per period would give ±20%; timing the edges removes that error.
+- A first-order low-pass filter with a 40 ms time constant smooths what is left.
+- With no edge for 100 ms the speed is 0 (slowest measurable speed ~0.12 rad/s). Between edges the estimate can only decrease, so a wheel that stops is seen as slowing down.
+- The encoder counters are never reset; `z` only zeroes the displayed numbers.
+
+Results (2026-10-11, wheels lifted, duty 0.5):
+
+| | Stability test (5 s) | Step test (4 runs) |
+|---|---|---|
+| Left | 7.28 rad/s, std 0.5%, equal to the tick-count mean | steady 7.37-7.49 rad/s, K 14.7-15.0 rad/s per duty, τ 0.10 s |
+| Right | 6.88 rad/s, std 0.8%, equal to the tick-count mean | steady 7.09-7.14 rad/s, K 14.2-14.3 rad/s per duty, τ 0.10 s |
+
+K is the steady speed divided by the duty; τ is the time to reach 63% of the steady speed (20 ms resolution).
+
 ## Build and flash
 
 The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so that PlatformIO does not pick the LiDAR's ESP32-C3 (`/dev/ttyACM0`).
@@ -75,10 +93,10 @@ cd firmware_wheels
 
 ## Serial output and test keys
 
-Every 200 ms, one line per wheel pair:
+Every 200 ms, one line per wheel pair (`w` is the filtered speed):
 
 ```
-L   1059 ticks   2.050 rev duty +0.50 (req +0.50) glitch 0 fast 0 | R    996 ticks   1.928 rev duty +0.50 (req +0.50) glitch 0 fast 0
+L   1017 ticks  w  +7.21 rad/s  duty +0.50 (req +0.50)  glitch 0 fast 0 | R    964 ticks  w  +6.83 rad/s  duty +0.50 (req +0.50)  glitch 0 fast 0
 ```
 
 `duty` is the value applied to the bridge, `req` the requested one: they differ while a reversal waits for the wheel to stop.
@@ -92,11 +110,17 @@ Single keys, no Enter needed:
 | `3` | Left forward, right backward |
 | `4` | Stop |
 | `+` / `-` | Both wheels forward, duty up / down by 0.05 |
-| `z` | Reset the encoder counters |
+| `5` | Step test: duty 0.5 from standstill for 2 s, prints steady speed, gain K and time constant τ |
+| `6` | Stability test: with the wheels turning, measures for 5 s and prints mean, spread and PASS/FAIL |
+| `z` | Zero the displayed counters |
+
+While a test runs the periodic output stops and only `4` (abort) is accepted.
 
 **Encoder test:** motors off, mark the wheel, press `z`, turn the wheel 5 revolutions by hand and stop on the mark. Expected: about 2580 ticks, `glitch 0`, `fast 0`.
 
 **Motor test** (wheels lifted): `1` turns both wheels forward with rising ticks, `2` backward with falling ticks, `3` in opposite directions, `4` stops them. `glitch` and `fast` stay at 0.
+
+**Speed test** (wheels lifted): `1`, wait 2 s, `6`. Pass: std ≤ 3% of the mean and mean within 1% of the tick-count mean, on both wheels.
 
 ## Code layout
 
@@ -106,4 +130,6 @@ Single keys, no Enter needed:
 | [src/config.h](src/config.h) | Pins and constants |
 | [src/encoders.h](src/encoders.h), [src/encoders.cpp](src/encoders.cpp) | Encoder interrupts, consistent snapshot of counts and edge times |
 | [src/motors.h](src/motors.h), [src/motors.cpp](src/motors.cpp) | L298N driver: duty to PWM and direction, safe reversal |
-| [src/main.cpp](src/main.cpp) | Setup, test keys, debug output |
+| [src/velocity.h](src/velocity.h), [src/velocity.cpp](src/velocity.cpp) | Speed estimate: timed edges + low-pass filter |
+| [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: position and speed of each wheel, recording for the tests |
+| [src/main.cpp](src/main.cpp) | Setup, test keys and their analysis, debug output |
