@@ -18,6 +18,33 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | Raspberry Pi 5 | Onboard computer, ROS 2 | |
 | ESP32-C3 SuperMini | LiDAR ↔ Pi interface | Connected over USB-C |
 | LiDAR YDS2MD-1 (EAI) | 360° scanning | OEM variant of the YDLIDAR X2/X2L family. See [firmware_lidar/README.md](firmware_lidar/README.md) |
+| ESP32 DevKit (38 pins) | Wheel motors and encoders ↔ Pi interface | ESP32-D0WD-V3 |
+| L298N | Dual H-bridge for the two wheel motors | Motor supply 14.7 V, PWM from the ESP32 |
+| Roomba wheel modules ×2 | Drive wheels | Gear motor with a single-channel Hall encoder |
+| BMI160 | IMU (I2C) | Wired, not used yet |
+
+## Wiring
+
+### LiDAR
+
+![LiDAR wiring](docs/lidar.jpeg)
+
+The LiDAR's 4-wire connector goes to the ESP32-C3 SuperMini: TX → GPIO20, M_SCTR → GPIO3, 5V and GND to the board. Bottom left: the LiDAR bracket. Details in [firmware_lidar/README.md](firmware_lidar/README.md).
+
+### Wheels
+
+![Wheels wiring](docs/wheels.jpeg)
+
+| From | To |
+|---|---|
+| L298N ENA, IN1, IN2 (left motor) | ESP32 GPIO14, GPIO27, GPIO26 |
+| L298N IN3, IN4, ENB (right motor) | ESP32 GPIO25, GPIO33, GPIO32 |
+| L298N 12V / GND | 14.7 V motor supply; GND shared with the ESP32 |
+| Encoder signal, left / right | ESP32 GPIO18 / GPIO19 |
+| Encoder power | ESP32 VIN (5 V) and GND |
+| BMI160 SDA / SCL, power | ESP32 GPIO21 / GPIO22, 3V3 and GND |
+
+The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from the ESP32. Top left: the encoder on the back of a wheel motor. Bottom left: the ESP32 ↔ BMI160 wiring on its own.
 
 ## Repository layout
 

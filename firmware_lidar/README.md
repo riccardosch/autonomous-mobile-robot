@@ -32,6 +32,8 @@ The motor is connected to a separate 2-wire connector on the LiDAR board. The ro
 
 ## ESP32-C3 SuperMini connections
 
+![LiDAR wiring](../docs/lidar.jpeg)
+
 | LiDAR | ESP32-C3 | Notes |
 |---|---|---|
 | Blue (TX) | GPIO20 | RX of `Serial1` |
