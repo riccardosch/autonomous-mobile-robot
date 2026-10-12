@@ -222,4 +222,5 @@ Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set th
 | [tools/cmd_sender.py](tools/cmd_sender.py) | Sends `v <left> <right>` targets at a fixed rate, for the watchdog test |
 | [tests/README.md](tests/README.md) | Test record |
 | [tests/sim/pid_sim.cpp](tests/sim/pid_sim.cpp) | PC simulation of the controller on a model of the wheel built from the tests |
+| [tests/serial_speed/](tests/serial_speed/) | Serial link speed test (separate firmware + Pi script), used to choose the micro-ROS baud rate |
 | [src/main.cpp](src/main.cpp) | Setup, test keys and their analysis, debug output |

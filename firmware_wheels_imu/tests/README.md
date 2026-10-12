@@ -10,6 +10,7 @@ Every test run on the wheel firmware, with the code it was run on, the procedure
 | [T4](#t4-speed-controller) | 2026-10-11 | 4 | Speed controller: steady state, step, hand brake | ✅ steady state / ❌ transients (retune on the ground) |
 | [T5](#t5-command-watchdog) | 2026-10-11 | 5 | Wheels stop when the commands stop | ✅ PASS |
 | [T6](#t6-imu) | 2026-10-12 | 6 | IMU detection, still readings, axes, rotation | ✅ PASS |
+| [T7](#t7-serial-link-speed) | 2026-10-12 | 7 (micro-ROS) | USB serial link up to 921600 baud | ✅ PASS |
 
 ---
 
@@ -369,3 +370,35 @@ rotation test result: +90.5 deg about z (+ = to the left, seen from above)
 ```
 
 The 0.6 m/s² on x and y at rest are the accelerometer zero offset and a slightly uneven floor; they are not calibrated.
+
+---
+
+## T7: Serial link speed
+
+Before micro-ROS: can the USB serial link (CP2102 on the ESP32 DevKit, Pi 5 USB) carry its traffic? Two 50 Hz streams, `sensor_msgs/Imu` (~300 bytes) and `sensor_msgs/JointState` (~150 bytes), need ~25-35 kB/s from the ESP32 to the Pi with the protocol overhead; at 115200 baud the link carries only ~11.5 kB/s.
+
+| | |
+|---|---|
+| Code | [serial_speed/](serial_speed/), a separate PlatformIO project committed with this entry: [src/main.cpp](serial_speed/src/main.cpp) on the ESP32 switches to the requested baud rate and echoes every byte; [serial_speed.py](serial_speed/serial_speed.py) on the Pi sends random bytes for 5 s (or `--seconds`) per baud rate and compares what comes back |
+| Procedure | Flash `serial_speed/`, run `python3 serial_speed.py`, then `python3 serial_speed.py --bauds 921600 --seconds 60`, then flash the wheel firmware again |
+| Criterion | Every byte back unchanged and in order (`wrong 0  missing 0`), and at the chosen rate at least twice the micro-ROS traffic (≥ ~60 kB/s) |
+| Result | ✅ PASS at every rate. **921600 baud chosen for micro-ROS**: 81 kB/s each way, 4.9 MB in 60 s without a single wrong or missing byte |
+
+```
+    baud   echoed            throughput             result
+  115200      57856 bytes    11.5 kB/s each way  wrong 0  missing 0  PASS
+          ESP32: echoed 57856 bytes at 115200 baud
+  230400     113920 bytes    22.7 kB/s each way  wrong 0  missing 0  PASS
+          ESP32: echoed 113920 bytes at 230400 baud
+  460800     220416 bytes    44.0 kB/s each way  wrong 0  missing 0  PASS
+          ESP32: echoed 220416 bytes at 460800 baud
+  921600     405760 bytes    81.1 kB/s each way  wrong 0  missing 0  PASS
+          ESP32: echoed 405760 bytes at 921600 baud
+all PASS
+```
+
+```
+  921600    4873472 bytes    81.2 kB/s each way  wrong 0  missing 0  PASS
+```
+
+Note: a first version of the script switched back to 115200 too late and missed the ESP32's reports; it also showed a few bytes "missing" at 230400 and 460800 and no answer to the first command after boot. With the timing fixed (and the ESP32's own byte count now printed) every rate passes, so those were script errors, not link errors. The 60 s run at 921600 was already clean with the first version.
