@@ -5,6 +5,25 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-12: Wheel firmware, block 6 (BMI160 IMU)
+
+### Done
+- Renamed `firmware_wheels/` to `firmware_wheels_imu/`: the same ESP32 reads the IMU, and micro-ROS will publish wheels and IMU from one node.
+- BMI160 driver on I2C written directly with `Wire`: detection on the configured pins (and swapped), configuration read back, ±500 °/s and ±4 g at 50 Hz, samples in m/s² and rad/s in the robot frame (REP 103), gyro bias calibration at boot.
+- The IMU is read in the 20 ms control task; the longest period went to 0.53 ms, so the wheel control is not affected.
+- Decision: the ESP32 publishes raw IMU data only; `robot_localization` on the Pi fuses the gyro rate with the wheel odometry. No orientation filter on either side for a ground robot.
+- Test T6 passed: |a| within 2% of g, gyro noise ~0.0006 rad/s, a 90° turn read as 90.5°, board axes equal to the robot axes.
+
+### Learned
+- After a soft reset the BMI160 drops register writes that come less than 450 µs apart. With back-to-back writes the range stayed at ±2 g (acceleration read twice the real value) and the gyro read exactly 0. Fixed with a 1 ms gap after each write, and the configuration is now read back.
+- The wiring diagram was hard to read on the SDA/SCL labels; the hardware confirmed SDA on GPIO21 and SCL on GPIO22.
+
+### Next steps
+- micro-ROS layer: wheel JointState, raw `sensor_msgs/Imu`, wheel speed targets.
+- Retune the wheel controller on the ground (with a ~1.4 kg dummy for the Kinect v1, or after mounting it).
+
+---
+
 ## 2026-10-11: Wheel firmware, block 5 (watchdog): core firmware done
 
 ### Done

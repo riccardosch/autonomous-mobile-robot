@@ -21,7 +21,7 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | ESP32 DevKit (38 pins) | Wheel motors and encoders ↔ Pi interface | ESP32-D0WD-V3 |
 | L298N | Dual H-bridge for the two wheel motors | Motor supply 14.7 V, PWM from the ESP32 |
 | Roomba wheel modules ×2 | Drive wheels | Gear motor with a single-channel Hall encoder |
-| BMI160 | IMU (I2C) | Wired, not used yet |
+| BMI160 | IMU (I2C) | Read by the wheel ESP32 at 50 Hz, in the centre of the robot |
 
 ## Wiring
 
@@ -42,7 +42,7 @@ The LiDAR's 4-wire connector goes to the ESP32-C3 SuperMini: TX → GPIO20, M_SC
 | L298N 12V / GND | 14.7 V motor supply; GND shared with the ESP32 |
 | Encoder signal, left / right | ESP32 GPIO18 / GPIO19 |
 | Encoder power | ESP32 VIN (5 V) and GND |
-| BMI160 SDA / SCL, power | ESP32 GPIO21 / GPIO22, 3V3 and GND |
+| BMI160 SDA / SCL, power | ESP32 GPIO21 / GPIO22, 3V3 and GND; CS to 3V3 (I2C mode), SAO to GND (address 0x68) |
 
 The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from the ESP32. Top left: the encoder on the back of a wheel motor. Bottom left: the ESP32 ↔ BMI160 wiring on its own.
 
@@ -73,6 +73,7 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels_imu
 | Wheel speed in rad/s (block 3) | ✅ Spread below 1% at ~7 rad/s |
 | Wheel speed PID (block 4) | ✅ Holds 2-8 rad/s within 0.01 rad/s; transients to retune on the ground |
 | Wheel command watchdog (block 5) | ✅ Wheels stop 0.5 s after the last command |
+| IMU on the wheel ESP32 (block 6) | ✅ Acceleration and angular rate in the robot frame, 90° turn read as 90.5° |
 | Wheel firmware: transients retuned on the ground, micro-ROS layer | ⏳ To do |
 | Wheel odometry | ⏳ To do |
 | SLAM | ⏳ To do |

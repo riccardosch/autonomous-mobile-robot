@@ -1,8 +1,8 @@
 # firmware_wheels_imu
 
-Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N and reads their encoders. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (wheel JointState out, wheel speed targets in).
+Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N, reads their encoders and reads the BMI160 IMU. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top: one node with wheel JointState and raw IMU data out, wheel speed targets in.
 
-> **Status (2026-10-11):** all 5 blocks of the core firmware done and tested with the wheels lifted. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s and the watchdog stops the wheels 0.5 s after the last command. Still open: the controller transients (overshoot from standstill, recovery after a hand brake), to retune with the robot on the ground; then the micro-ROS layer.
+> **Status (2026-10-12):** blocks 1-6 done and tested. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s, the watchdog stops the wheels 0.5 s after the last command, and the IMU gives acceleration and angular rate in the robot frame (90° turn measured as 90.5°). Still open: the controller transients (overshoot from standstill, recovery after a hand brake), to retune with the robot on the ground; then the micro-ROS layer.
 
 | Block | Contents | Status |
 |---|---|---|
@@ -11,6 +11,7 @@ Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors 
 | 3 | Wheel speed in rad/s | ✅ Spread 0.5-0.8% at ~7 rad/s; step response measured |
 | 4 | Per-wheel speed PID | ✅ Steady state within 0.01 rad/s, spread ≤ 0.4%. ⚠️ Overshoot 25-28% from standstill (target 10%): retune on the ground |
 | 5 | Command watchdog | ✅ Wheels stop 0.5 s after the last target |
+| 6 | BMI160 IMU | ✅ \|a\| within 2% of g, gyro noise ~0.0006 rad/s, 90° turn read as 90.5° |
 
 Every test run on the hardware, with the commit and files it used and the output that shows the result, is in the [test record](tests/README.md).
 
@@ -126,6 +127,24 @@ Close `pio device monitor` first: only one program at a time can open the port.
 
 **Opening the port resets the ESP32**, even with DTR and RTS held released by the script: the firmware restarts in about a second with the motors off. The same will happen when the micro-ROS agent opens the port.
 
+## IMU
+
+A BMI160 (purple GY-BMI160 board) on I2C, read by the control task once per period (50 Hz) right after the motors are commanded. The driver ([src/imu.cpp](src/imu.cpp)) talks to the chip directly with `Wire`, no external library.
+
+| | |
+|---|---|
+| Wiring | SDA GPIO21, SCL GPIO22, 400 kHz; CS to 3.3 V (I2C mode), SAO to GND (address 0x68). See the [main README](../README.md#wheels) |
+| Ranges | Gyro ±500 °/s (the robot spinning in place at 8 rad/s per wheel turns at ~140 °/s), accel ±4 g |
+| Rate | 50 Hz output, normal filter mode |
+| Output | Acceleration in m/s² and angular rate in rad/s, in the robot frame: x forward, y left, z up (ROS REP 103) |
+| Mounting | Centre of the robot, board flat, connector side forward. The board axes match the robot axes, so `IMU_AXIS_FOR_ROBOT` and `IMU_SIGN_FOR_ROBOT` are the identity (checked in test T6) |
+
+- **Start-up.** The firmware looks for the chip on the configured pins, then on the pins swapped, at 0x68 and 0x69, and prints where it found it. After a soft reset it writes the configuration and **reads it back**: the IMU is used only if every register holds what was written. In suspend mode (right after the reset) the BMI160 ignores a register write that comes less than 450 µs after the previous one, so the driver waits 1 ms after every write.
+- **Gyro bias.** At boot and with key `c` the gyro is averaged for 2 s with the robot still and the mean is subtracted from then on. If any axis moves by more than 0.02 rad/s during those 2 s the calibration starts again.
+- **Missing IMU.** The I2C timeout is 2 ms, so an unplugged IMU does not stall the wheel control; the failed reads are counted.
+- **Orientation** is not computed here. The micro-ROS layer will publish raw `sensor_msgs/Imu` data (orientation marked as not provided) and `robot_localization` on the Pi will fuse the gyro rate with the wheel odometry.
+- The accelerometer zero offset is not calibrated: at rest it reads ~0.5 m/s² on x and y and |a| 2% above g, within the BMI160 specification (zero-g offset up to ~40 mg).
+
 ## Build and flash
 
 The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so that PlatformIO does not pick the LiDAR's ESP32-C3 (`/dev/ttyACM0`).
@@ -140,10 +159,11 @@ cd firmware_wheels_imu
 
 ## Serial output and test keys
 
-Every 200 ms, one line per wheel pair (`w` is the filtered speed, `duty` the value applied to the bridge):
+Every 200 ms, one line per wheel pair (`w` is the filtered speed, `duty` the value applied to the bridge) and, after key `m`, one IMU line (`yaw` is the gyro z integrated since boot, only for tests: it drifts):
 
 ```
 L   4846 ticks  w  +4.00 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R   4845 ticks  w  +4.00 rad/s  target +4.00  duty +0.33  glitch 0 fast 0
+IMU a  -0.55  -0.43  +9.98 m/s2 |a| 10.01  g -0.0005 +0.0002 -0.0004 rad/s  yaw    +5.5 deg
 ```
 
 Single keys, no Enter needed:
@@ -161,6 +181,12 @@ Single keys, no Enter needed:
 | `p` / `o` | KP × / ÷ 1.2 |
 | `i` / `u` | KI × / ÷ 1.2 |
 | `w` | Watchdog on / off (on at boot) |
+| `m` | IMU line in the periodic output on / off |
+| `c` | Calibrate the gyro bias again (robot still) |
+| `8` | IMU still test: robot still for 5 s, prints mean acceleration, gyro mean and spread, longest control period and PASS/FAIL |
+| `9` | Rotation test: press, turn the robot, press again: prints the angle turned about z |
+| `?` | Prints the IMU detection and configuration read back, the calibration and the watchdog state |
+| `q` | Pause / resume the periodic output, to copy lines |
 | `z` | Zero the displayed counters |
 
 Gains changed with `p`/`o`/`i`/`u` go back to the `config.h` values at reset.
@@ -177,6 +203,8 @@ While a test runs the periodic output stops and only `4` (abort) is accepted.
 
 **Watchdog test** (wheels lifted): with the watchdog on, `1` must stop by itself after ~0.5 s; `tools/cmd_sender.py` must keep the wheels turning, and Ctrl+C on it must stop them within 0.5 s.
 
+**IMU test** (robot still, motors off): `8`. Pass: |a| within 4% of 9.81 m/s² and every gyro mean below 0.005 rad/s. Then `9`, turn the robot 90° to the left (anticlockwise seen from above), `9`: about +90°.
+
 Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set the duty directly; see the [test record](tests/README.md).
 
 ## Code layout
@@ -189,7 +217,8 @@ Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set th
 | [src/motors.h](src/motors.h), [src/motors.cpp](src/motors.cpp) | L298N driver: duty to PWM and direction, safe reversal |
 | [src/velocity.h](src/velocity.h), [src/velocity.cpp](src/velocity.cpp) | Speed estimate: timed edges + low-pass filter |
 | [src/pid.h](src/pid.h), [src/pid.cpp](src/pid.cpp) | PI with feedforward, integral limit and clamping anti-windup; plain C++, also built on the PC by the simulation |
-| [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: speed estimate, speed controller, motor commands, recording for the tests |
+| [src/imu.h](src/imu.h), [src/imu.cpp](src/imu.cpp) | BMI160 driver: detection, configuration with read-back, samples in the robot frame, gyro bias calibration |
+| [src/control.h](src/control.h), [src/control.cpp](src/control.cpp) | Fixed-period task: speed estimate, speed controller, motor commands, IMU read, recording for the tests |
 | [tools/cmd_sender.py](tools/cmd_sender.py) | Sends `v <left> <right>` targets at a fixed rate, for the watchdog test |
 | [tests/README.md](tests/README.md) | Test record |
 | [tests/sim/pid_sim.cpp](tests/sim/pid_sim.cpp) | PC simulation of the controller on a model of the wheel built from the tests |

@@ -9,6 +9,7 @@ Every test run on the wheel firmware, with the code it was run on, the procedure
 | [T3](#t3-speed-estimate) | 2026-10-11 | 3 | Speed estimate stability, step response | ✅ PASS |
 | [T4](#t4-speed-controller) | 2026-10-11 | 4 | Speed controller: steady state, step, hand brake | ✅ steady state / ❌ transients (retune on the ground) |
 | [T5](#t5-command-watchdog) | 2026-10-11 | 5 | Wheels stop when the commands stop | ✅ PASS |
+| [T6](#t6-imu) | 2026-10-12 | 6 | IMU detection, still readings, axes, rotation | ✅ PASS |
 
 ---
 
@@ -309,3 +310,62 @@ L     63 ticks  w  +5.15 rad/s  target +4.00  duty +0.28  glitch 0 fast 0 | R   
 L   1134 ticks  w  +3.99 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R   1131 ticks  w  +3.99 rad/s  target +4.00  duty +0.32  glitch 0 fast 0
 L   1189 ticks  w  +2.60 rad/s  target +0.00  duty +0.00  glitch 0 fast 0 | R   1187 ticks  w  +2.58 rad/s  target +0.00  duty +0.00  glitch 0 fast 0
 ```
+
+---
+
+## T6: IMU
+
+| | |
+|---|---|
+| Firmware | commit `4ca0060` (block 6). Files: [src/imu.cpp](../src/imu.cpp), [src/control.cpp](../src/control.cpp) (read in the task), [src/main.cpp](../src/main.cpp) (keys `8`, `9`, `m`, `?`), [src/config.h](../src/config.h) |
+| Setup | IMU mounted in the centre of the robot, connector side forward; robot on the floor, motors off |
+| Procedure | **T6.1** `q`, `?`: detection and configuration read back. **T6.2** `8` with the robot still. **T6.3** `m`: IMU lines with the robot flat and with the nose up. **T6.4** `9`, robot turned 90° to the left by hand along a floor edge, `9` |
+| Criterion | T6.1 found and configured. T6.2 \|a\| within 4% of 9.81 m/s², every gyro mean below 0.005 rad/s. T6.3 gravity on +z when flat, +x with the nose up. T6.4 +90° ± 5° |
+| Result | ✅ PASS on all four. The control period stays below 0.6 ms of its 20 ms with the IMU read in it |
+
+### Problem found during the test
+
+A first build wrote the configuration registers one after the other. The chip answered (chip id read correctly, no I2C errors) but the gyro read exactly 0 on all axes and the acceleration was twice the real one (|a| 20.5 m/s²): the ±4 g range had not been accepted and the chip was still at its default ±2 g.
+
+```
+IMU a  +5.54  +0.02 +19.69 m/s2 |a| 20.46  g +0.0000 +0.0000 +0.0000 rad/s  yaw    +0.0 deg
+```
+
+Cause: right after the soft reset the BMI160 is in suspend mode, where it needs 450 µs between two register writes and silently drops a write that comes sooner. Fixed by waiting 1 ms after every write; the driver now also reads the configuration back and uses the IMU only if it matches (line `BMI160 configured: ...` below). Commit `4ca0060` includes the fix.
+
+The same first readings showed 2.6 m/s² on x at rest: the robot was resting nose up by ~15°. With the robot flat the reading became the one in T6.3.
+
+### Results
+
+T6.1:
+
+```
+BMI160 found at 0x68 (SDA GPIO21, SCL GPIO22)
+BMI160 configured: ACC_CONF 0x27 ACC_RANGE 0x05 GYR_CONF 0x27 GYR_RANGE 0x02 PMU_STATUS 0x14 ERR_REG 0x00
+IMU calibration done, gyro bias x +0.0002 y -0.0101 z +0.0036 rad/s, read errors 0
+```
+
+T6.2:
+
+```
+IMU still test result (5.0 s, 250 samples, read errors 0, control period max 531 us):
+  accel mean x -0.545 y -0.437 z +9.979 m/s2  |a| 10.004 (error 2.0%)
+  gyro  mean x +0.0000 y +0.0000 z -0.0004 rad/s  std x 0.0007 y 0.0005 z 0.0005  PASS
+```
+
+T6.3, flat (gravity on +z) and with the nose up by ~15° (gravity partly on +x, so the board x axis points forward):
+
+```
+IMU a  -0.55  -0.43  +9.98 m/s2 |a| 10.01  g -0.0005 +0.0002 -0.0004 rad/s  yaw    +5.5 deg
+IMU a  +2.62  -0.11  +9.66 m/s2 |a| 10.01  g +0.0003 -0.0003 -0.0004 rad/s  yaw    +1.9 deg
+```
+
+The second line comes from the first readings after the fix, when the robot was still resting nose up.
+
+T6.4, a positive turn to the left: the board z axis points up and, with x forward, y points left (the BMI160 axes are right-handed). The axis mapping in `config.h` stays the identity:
+
+```
+rotation test result: +90.5 deg about z (+ = to the left, seen from above)
+```
+
+The 0.6 m/s² on x and y at rest are the accelerometer zero offset and a slightly uneven floor; they are not calibrated.
