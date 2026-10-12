@@ -11,7 +11,7 @@
 // 0 -> 4 rad/s step; the hardware gave 34-35%. It overstates the speed peak
 // after a hand brake (93% against 26% measured): the simulated hand is harder.
 //
-// Build and run from firmware_wheels/:
+// Build and run from firmware_wheels_imu/:
 //   g++ -O2 -Isrc tests/sim/pid_sim.cpp src/pid.cpp -o /tmp/pid_sim
 //   /tmp/pid_sim                          # settings from config.h
 //   /tmp/pid_sim KP KI I_MAX FF_OFFSET FF_GAIN

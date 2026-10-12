@@ -1,4 +1,4 @@
-# firmware_wheels
+# firmware_wheels_imu
 
 Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N and reads their encoders. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (wheel JointState out, wheel speed targets in).
 
@@ -131,7 +131,7 @@ Close `pio device monitor` first: only one program at a time can open the port.
 The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so that PlatformIO does not pick the LiDAR's ESP32-C3 (`/dev/ttyACM0`).
 
 ```bash
-cd firmware_wheels
+cd firmware_wheels_imu
 ~/.platformio/penv/bin/pio run -t upload --upload-port /dev/ttyUSB0
 ~/.platformio/penv/bin/pio device monitor --port /dev/ttyUSB0   # Ctrl+C to exit
 ```

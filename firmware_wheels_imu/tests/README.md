@@ -16,7 +16,7 @@ Every test run on the wheel firmware, with the code it was run on, the procedure
 
 | | |
 |---|---|
-| Firmware | commit `16be507` (block 1). Files: [src/encoders.cpp](../src/encoders.cpp), [src/main.cpp](../src/main.cpp), [src/config.h](../src/config.h) |
+| Firmware | commit `fd239a6` (block 1). Files: [src/encoders.cpp](../src/encoders.cpp), [src/main.cpp](../src/main.cpp), [src/config.h](../src/config.h) |
 | Procedure | Motors off. Mark on the wheel aligned with a fixed mark, `z`, turn the wheel 5 revolutions by hand, stop on the mark. Twice per wheel: slowly (~2 s per revolution) and at ~1 revolution per second |
 | Criterion | About the same number of ticks per revolution on both wheels and at both speeds; `glitch 0` and `fast 0` |
 | Result | ✅ Mean 516.6 transitions per revolution, used as `ENCODER_TICKS_PER_REV` |
@@ -45,7 +45,7 @@ Notes: a first one-revolution run gave 840 ticks on the left wheel; the 5-revolu
 
 | | |
 |---|---|
-| Firmware | commit `616d4a5` (block 2). Files: [src/motors.cpp](../src/motors.cpp), [src/encoders.cpp](../src/encoders.cpp) (signed counts), [src/main.cpp](../src/main.cpp) (keys), [src/config.h](../src/config.h) |
+| Firmware | commit `71d6850` (block 2). Files: [src/motors.cpp](../src/motors.cpp), [src/encoders.cpp](../src/encoders.cpp) (signed counts), [src/main.cpp](../src/main.cpp) (keys), [src/config.h](../src/config.h) |
 | Procedure | `z`, then `1` (forward), `2` (backward), `3` (opposite), `4` (stop); then `4` and `+` one step at a time from duty 0 up to 1 |
 | Criterion | Key `1` turns both wheels forward (checked by eye) with rising ticks, `2` backward with falling ticks, `3` left forward and right backward; a reversal waits for the wheel to stop; `glitch 0` and `fast 0` with the motors on |
 | Result | ✅ All directions and signs correct, no glitches up to full duty. Start from standstill at duty ~0.35 |
@@ -102,7 +102,7 @@ Going down with `-`, the wheels keep turning to about 0.10-0.15.
 
 | | |
 |---|---|
-| Firmware | commit `a6668f5` (block 3). Files: [src/velocity.cpp](../src/velocity.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp) (keys 5 and 6 and their analysis), [src/config.h](../src/config.h) |
+| Firmware | commit `3f21c6b` (block 3). Files: [src/velocity.cpp](../src/velocity.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp) (keys 5 and 6 and their analysis), [src/config.h](../src/config.h) |
 | Procedure | **T3.1 stability:** `1` (duty 0.5), wait 2 s, `6`. **T3.2 step response:** `4`, wait for standstill, `5`; repeated 4 times |
 | Criterion | T3.1: on each wheel std ≤ 3% of the mean and mean within 1% of the mean from the tick counts. T3.2: repeatable steady speed, gain and time constant |
 | Result | ✅ T3.1 PASS (std 0.5% and 0.8%). T3.2: K 14.7-15.0 / 14.2-14.3 rad/s per duty, τ 0.10 s, used to tune the controller |
@@ -152,7 +152,7 @@ Decision (2026-10-11): keep the steady-state behaviour, which is what odometry n
 
 | | |
 |---|---|
-| Firmware | Build of block 4 before commit `ae436fe`, with KP 0.067, KI 0.67 (lambda tuning: KP = 1/K, KI = KP/τ), no integral limit, feedforward target / 14.8 (left) and / 14.2 (right). Files: [src/pid.cpp](../src/pid.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp) (keys 6 and 7), [src/config.h](../src/config.h) |
+| Firmware | Build of block 4 before commit `baddcaa`, with KP 0.067, KI 0.67 (lambda tuning: KP = 1/K, KI = KP/τ), no integral limit, feedforward target / 14.8 (left) and / 14.2 (right). Files: [src/pid.cpp](../src/pid.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp) (keys 6 and 7), [src/config.h](../src/config.h) |
 | Procedure | `7` from standstill; `+` to 2, 4, 6 and 8 rad/s and `6` at each; at 4 rad/s, left wheel braked by hand for ~2 s and released |
 | Result | Steady state ✅ at every speed. Step ❌ 34-35% overshoot. Brake ❌ duty up to 0.87, peak 5.06 rad/s after the release |
 
@@ -188,8 +188,8 @@ L  34407 ticks  w  +4.08 rad/s  target +4.00  duty +0.61  glitch 0 fast 0 | R  3
 
 | | |
 |---|---|
-| Code | [sim/pid_sim.cpp](sim/pid_sim.cpp) (commit `ae436fe`): the firmware's own [src/pid.cpp](../src/pid.cpp) with the values of [src/config.h](../src/config.h), on a model of the left wheel built from T2, T3 and T4.3 (speed-duty curve, τ 0.10 s, start at duty 0.35, same speed filter and period) |
-| Run | From `firmware_wheels/`: `g++ -O2 -Isrc tests/sim/pid_sim.cpp src/pid.cpp -o /tmp/pid_sim && /tmp/pid_sim` |
+| Code | [sim/pid_sim.cpp](sim/pid_sim.cpp) (commit `baddcaa`): the firmware's own [src/pid.cpp](../src/pid.cpp) with the values of [src/config.h](../src/config.h), on a model of the left wheel built from T2, T3 and T4.3 (speed-duty curve, τ 0.10 s, start at duty 0.35, same speed filter and period) |
+| Run | From `firmware_wheels_imu/`: `g++ -O2 -Isrc tests/sim/pid_sim.cpp src/pid.cpp -o /tmp/pid_sim && /tmp/pid_sim` |
 | Result | It reproduces the hardware: 31% overshoot predicted for T4.1 (34-35% measured); +47% peak and ~1.5 s recovery predicted for T4.4 (+47% and ~1.6 s measured). It showed that no choice of KP and KI meets every criterion with the wheels lifted, because of the static friction |
 
 First version (`/tmp/pid_sim 0.067 0.67 1 0 14.8`):
@@ -237,7 +237,7 @@ L  39915 ticks  w  +8.00 rad/s  target +8.00  duty +0.52  glitch 0 fast 0 | R  3
 
 | | |
 |---|---|
-| Firmware | commit `ae436fe`: KP 0.067, KI 0.20, integral limit ±0.20, feedforward from T4.3. Files: [src/pid.cpp](../src/pid.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp), [src/config.h](../src/config.h) |
+| Firmware | commit `baddcaa`: KP 0.067, KI 0.20, integral limit ±0.20, feedforward from T4.3. Files: [src/pid.cpp](../src/pid.cpp), [src/control.cpp](../src/control.cpp), [src/main.cpp](../src/main.cpp), [src/config.h](../src/config.h) |
 | Procedure | `7` from standstill, twice; `6` at 4 and 8 rad/s; at 4 rad/s, left wheel braked by hand for ~3 s and released |
 | Result | Steady state ✅. Step ❌ 25-28% overshoot (from 34-35%). Brake ❌ duty up to 0.62 (from 0.87), but peak 5.89 rad/s (+47%) and ~1.6 s back to the target: the integral stays at its limit and empties slowly with the lower KI |
 
@@ -270,7 +270,7 @@ L  29697 ticks  w  +4.06 rad/s  target +4.00  duty +0.31  glitch 0 fast 0 | R  3
 
 | | |
 |---|---|
-| Firmware | commit `5c490b8` (block 5). Files: [src/control.cpp](../src/control.cpp) (watchdog in the control task), [src/main.cpp](../src/main.cpp) (`v` lines, key `w`), [src/config.h](../src/config.h) (`CMD_TIMEOUT_S` 0.5), [tools/cmd_sender.py](../tools/cmd_sender.py) |
+| Firmware | commit `e2c7e91` (block 5). Files: [src/control.cpp](../src/control.cpp) (watchdog in the control task), [src/main.cpp](../src/main.cpp) (`v` lines, key `w`), [src/config.h](../src/config.h) (`CMD_TIMEOUT_S` 0.5), [tools/cmd_sender.py](../tools/cmd_sender.py) |
 | Procedure | **T5.1:** watchdog on, key `1` once. **T5.2:** `python3 tools/cmd_sender.py` (4 rad/s at 20 Hz) for ~20 s, then Ctrl+C. **T5.3:** key `w` (watchdog off), key `1`, wait, key `4` |
 | Criterion | T5.1 and T5.2: the wheels stop by themselves within 0.5 s of the last target, with the watchdog message. T5.2: no stop while the script runs. T5.3: no stop until key `4` |
 | Result | ✅ PASS on all three |

@@ -9,9 +9,9 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ### Done
 - Command watchdog in the control task: with no speed target for 0.5 s the targets go to 0 and the motors coast. It runs in the fixed-period task, so it also covers a hung `loop()` or, later, a hung micro-ROS layer.
-- The firmware accepts `v <left> <right>` lines from programs; [firmware_wheels/tools/cmd_sender.py](../firmware_wheels/tools/cmd_sender.py) sends them at a fixed rate. Key `w` toggles the watchdog for manual tests.
+- The firmware accepts `v <left> <right>` lines from programs; [firmware_wheels_imu/tools/cmd_sender.py](../firmware_wheels_imu/tools/cmd_sender.py) sends them at a fixed rate. Key `w` toggles the watchdog for manual tests.
 - Test T5 passed: a single command stops after 0.5 s, 20 Hz commands keep the wheels turning (~21 s), and the wheels stop within 0.5 s of the last one.
-- This closes the core wheel firmware (blocks 1-5), all tested with the wheels lifted and recorded in the [test record](../firmware_wheels/tests/README.md).
+- This closes the core wheel firmware (blocks 1-5), all tested with the wheels lifted and recorded in the [test record](../firmware_wheels_imu/tests/README.md).
 
 ### Learned
 - Opening the serial port restarts the ESP32 even with DTR and RTS held released by the script. Harmless (it restarts with the motors off in about a second), but the micro-ROS agent will do the same.
@@ -30,8 +30,8 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 - PI speed controller with feedforward, one per wheel, in the 20 ms control task, which is now the only code that drives the motors. `control_set_target()` in rad/s is the entry point for the future micro-ROS layer.
 - Anti-windup by clamping, plus a limit on the integral; the output never opposes the target, because the encoder cannot read the direction.
 - Closed-loop test keys (`7` step test, `6` now also checks the error from the target) and run-time gain tuning (`p`/`o`, `i`/`u`).
-- A PC simulation of the controller ([firmware_wheels/tests/sim/pid_sim.cpp](../firmware_wheels/tests/sim/pid_sim.cpp)) that runs the firmware's own PI on a model of the wheel built from the tests.
-- A test record ([firmware_wheels/tests/README.md](../firmware_wheels/tests/README.md)): every hardware test with the commit and files used, procedure, criterion, result and the output lines that show it.
+- A PC simulation of the controller ([firmware_wheels_imu/tests/sim/pid_sim.cpp](../firmware_wheels_imu/tests/sim/pid_sim.cpp)) that runs the firmware's own PI on a model of the wheel built from the tests.
+- A test record ([firmware_wheels_imu/tests/README.md](../firmware_wheels_imu/tests/README.md)): every hardware test with the commit and files used, procedure, criterion, result and the output lines that show it.
 
 ### Learned
 - Steady state is excellent: error ≤ 0.01 rad/s and spread ≤ 0.7% from 2 to 8 rad/s, on both wheels.
@@ -91,7 +91,7 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ### Done
 - Planned the wheel firmware for a second ESP32 (DevKit, 38 pins) in five blocks, each tested on the hardware before the next: encoders, motors, speed estimate, per-wheel PID, command watchdog. No ROS in this phase: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top (JointState out, wheel speed targets in; odometry stays in `diff_drive_controller` on the Pi).
-- Created `firmware_wheels/` (PlatformIO, `esp32dev`, `espressif32@6.9.0` as in the LiDAR firmware).
+- Created `firmware_wheels/` (renamed `firmware_wheels_imu/` on 2026-10-12, as it will also read the IMU) (PlatformIO, `esp32dev`, `espressif32@6.9.0` as in the LiDAR firmware).
 - Block 1: interrupt-driven counters for the two single-channel Hall encoders (CHANGE, both edges), with a 100 µs glitch filter and a "fast edge" counter (edges closer than 500 µs, impossible at the robot's speeds) to spot a noisy signal.
 - Added the LiDAR and wheels wiring diagrams to the READMEs.
 
