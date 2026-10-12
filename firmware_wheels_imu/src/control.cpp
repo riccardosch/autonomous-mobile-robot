@@ -19,6 +19,8 @@ static_assert(STEP_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
               "step test longer than the record buffer");
 static_assert(CL_STEP_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
               "closed-loop step test longer than the record buffer");
+static_assert(IMU_TEST_DURATION_S / CONTROL_PERIOD_S <= RECORD_MAX_SAMPLES,
+              "IMU test longer than the record buffer");
 
 const float FF_OFFSET[WHEEL_COUNT] = {FF_OFFSET_LEFT, FF_OFFSET_RIGHT};
 const float FF_GAIN[WHEEL_COUNT] = {FF_GAIN_LEFT, FF_GAIN_RIGHT};
@@ -35,6 +37,9 @@ uint32_t last_target_ms = 0;
 PiGains gains = {PID_KP, PID_KI, PID_I_MAX};
 float command[WHEEL_COUNT] = {};  // rad/s in closed loop, duty in open loop
 WheelState state[WHEEL_COUNT] = {};
+ImuState imu_state = {};
+bool imu_cal_request = false;
+uint32_t max_run_us = 0;
 RecordedSample samples[RECORD_MAX_SAMPLES];
 int record_target = 0;
 int record_count = 0;
@@ -61,6 +66,7 @@ void control_task(void *) {
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
     vTaskDelayUntil(&wake, pdMS_TO_TICKS(PERIOD_MS));
+    const uint32_t start_us = micros();
     EncoderSnapshot enc[WHEEL_COUNT];
     encoders_read(enc);
     VelocityEstimate v[WHEEL_COUNT];
@@ -75,6 +81,8 @@ void control_task(void *) {
     }
     const bool closed = closed_loop;
     const PiGains g = gains;
+    const bool calibrate = imu_cal_request;
+    imu_cal_request = false;
     float cmd[WHEEL_COUNT];
     for (int w = 0; w < WHEEL_COUNT; w++) cmd[w] = command[w];
     portEXIT_CRITICAL(&mux);
@@ -90,13 +98,28 @@ void control_task(void *) {
       motors_set(static_cast<Wheel>(w), duty[w]);
     }
 
+    if (calibrate) imu_start_calibration();
+    ImuSample imu = {};
+    const bool imu_ok = imu_read(imu);
+
     portENTER_CRITICAL(&mux);
     for (int w = 0; w < WHEEL_COUNT; w++) {
       state[w] = {enc[w].ticks * RAD_PER_TICK, v[w].filtered, v[w].raw, closed ? cmd[w] : 0.0f,
                   motors_status(static_cast<Wheel>(w)).applied};
     }
+    imu_state.ok = imu_ok;
+    if (imu_ok) {
+      imu_state.sample = imu;
+      imu_state.yaw += imu.gyro[2] * CONTROL_PERIOD_S;
+    } else {
+      imu_state.read_errors++;
+    }
+    imu_state.calibration = imu_calibration_state();
+    imu_state.calibration_restarts = imu_calibration_restarts();
+    imu_gyro_bias(imu_state.gyro_bias);
     if (record_count < record_target) {
       RecordedSample &s = samples[record_count];
+      s.imu = imu;
       for (int w = 0; w < WHEEL_COUNT; w++) {
         if (record_count == 0) record_start_ticks[w] = enc[w].ticks;
         record_end_ticks[w] = enc[w].ticks;
@@ -105,6 +128,7 @@ void control_task(void *) {
       }
       record_count++;
     }
+    max_run_us = max(max_run_us, static_cast<uint32_t>(micros() - start_us));
     portEXIT_CRITICAL(&mux);
   }
 }
@@ -173,6 +197,26 @@ void control_get_state(WheelState out[WHEEL_COUNT]) {
   portENTER_CRITICAL(&mux);
   for (int w = 0; w < WHEEL_COUNT; w++) out[w] = state[w];
   portEXIT_CRITICAL(&mux);
+}
+
+void control_get_imu(ImuState &out) {
+  portENTER_CRITICAL(&mux);
+  out = imu_state;
+  portEXIT_CRITICAL(&mux);
+}
+
+void control_imu_calibrate() {
+  portENTER_CRITICAL(&mux);
+  imu_cal_request = true;
+  portEXIT_CRITICAL(&mux);
+}
+
+uint32_t control_max_run_us() {
+  portENTER_CRITICAL(&mux);
+  const uint32_t us = max_run_us;
+  max_run_us = 0;
+  portEXIT_CRITICAL(&mux);
+  return us;
 }
 
 void control_record_start(int n) {

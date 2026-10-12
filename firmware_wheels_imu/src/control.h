@@ -1,6 +1,7 @@
 #pragma once
 
 #include "encoders.h"
+#include "imu.h"
 
 struct WheelState {
   float position;      // rad since start, + = forward
@@ -10,10 +11,21 @@ struct WheelState {
   float duty;          // duty applied to the bridge
 };
 
+struct ImuState {
+  bool ok;            // false if the IMU is missing or the last read failed
+  ImuSample sample;   // robot frame, gyro bias removed
+  float yaw;          // rad, integral of gyro z since start (drifts, for tests)
+  ImuCal calibration;
+  uint32_t calibration_restarts;
+  float gyro_bias[3];  // rad/s
+  uint32_t read_errors;
+};
+
 // One sample per control period, recorded for the tests.
 struct RecordedSample {
   float velocity_raw[WHEEL_COUNT];
   float velocity[WHEEL_COUNT];
+  ImuSample imu;
 };
 
 constexpr int RECORD_MAX_SAMPLES = 256;
@@ -42,6 +54,13 @@ void control_get_gains(float &kp, float &ki);
 
 // Consistent copy of the latest state of both wheels.
 void control_get_state(WheelState out[WHEEL_COUNT]);
+
+// Latest IMU state, and a request to calibrate the gyro again.
+void control_get_imu(ImuState &out);
+void control_imu_calibrate();
+
+// Longest run of one control period since the last call, in microseconds.
+uint32_t control_max_run_us();
 
 // Records the next `samples` periods (at most RECORD_MAX_SAMPLES).
 void control_record_start(int samples);

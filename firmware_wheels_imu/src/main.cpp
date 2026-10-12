@@ -1,7 +1,8 @@
 // Wheel firmware for the ESP32 DevKit.
 //
-// Block 5: closed-loop wheel speed (PI + feedforward) with a command
-// watchdog, commanded from the serial monitor or from tools/cmd_sender.py.
+// Block 6: closed-loop wheel speed (PI + feedforward) with a command
+// watchdog, commanded from the serial monitor or from tools/cmd_sender.py,
+// and the BMI160 IMU read in the control task.
 // Lines "v <left> <right>" (rad/s, ended by a newline) set the targets; they
 // are meant for scripts. Single keys, no Enter needed:
 //   1  both wheels forward at TEST_SPEED
@@ -17,6 +18,12 @@
 //   p/o  KP up/down by TUNE_FACTOR      i/u  KI up/down by TUNE_FACTOR
 //   w  watchdog on/off (on at boot): with it on, keys 1-3 and +/- drive the
 //      wheels only for CMD_TIMEOUT_S; tests 6 and 7 need it off
+//   m  IMU line in the periodic output on/off
+//   c  calibrate the gyro bias again (robot still)
+//   8  IMU still test: with the robot still, prints mean accel and gyro
+//   9  rotation test: press, turn the robot, press again: prints the angle about z
+//   ?  print the IMU detection result, calibration and watchdog state
+//   q  pause / resume the periodic output
 //   z  zero the displayed tick and glitch counters
 
 #include <Arduino.h>
@@ -28,7 +35,7 @@
 
 namespace {
 
-enum class Test { NONE, STEP, STABILITY, CL_STEP };
+enum class Test { NONE, STEP, STABILITY, CL_STEP, IMU_STILL };
 
 const char *const WHEEL_NAMES[WHEEL_COUNT] = {"L", "R"};
 
@@ -36,6 +43,14 @@ unsigned long last_print_ms = 0;
 float step_target = 0.0f;  // target set by the + and - keys
 Test running = Test::NONE;
 bool was_tripped = false;
+ImuInfo imu_info = {};
+bool imu_found = false;
+bool paused = false;
+bool show_imu = false;
+bool rotating = false;
+float yaw_start = 0.0f;
+ImuCal last_cal = ImuCal::DONE;
+uint32_t last_cal_restarts = 0;
 char line[32];      // "v <left> <right>" being received
 int line_len = -1;  // -1: not receiving a line
 EncoderSnapshot zero[WHEEL_COUNT] = {};  // counters at the last 'z'
@@ -167,6 +182,110 @@ void finish_stability_test() {
   }
 }
 
+void start_imu_test() {
+  ImuState imu;
+  control_get_imu(imu);
+  if (!imu_found || imu.calibration != ImuCal::DONE || !wheels_stopped()) {
+    Serial.println("IMU still test: needs the IMU, a finished calibration and the wheels stopped");
+    return;
+  }
+  control_max_run_us();  // restart the measurement
+  control_record_start(periods(IMU_TEST_DURATION_S));
+  running = Test::IMU_STILL;
+  Serial.printf("IMU still test: keep the robot still for %.1f s...\n", IMU_TEST_DURATION_S);
+}
+
+// Mean acceleration (gravity), mean and spread of the gyro.
+void finish_imu_test() {
+  const RecordedSample *s = control_record_samples();
+  const int n = periods(IMU_TEST_DURATION_S);
+  float accel[3] = {}, gyro[3] = {}, var[3] = {};
+  for (int i = 0; i < n; i++) {
+    for (int k = 0; k < 3; k++) {
+      accel[k] += s[i].imu.accel[k] / n;
+      gyro[k] += s[i].imu.gyro[k] / n;
+    }
+  }
+  for (int i = 0; i < n; i++) {
+    for (int k = 0; k < 3; k++) var[k] += sq(s[i].imu.gyro[k] - gyro[k]) / n;
+  }
+  const float norm = sqrtf(sq(accel[0]) + sq(accel[1]) + sq(accel[2]));
+  const float g_error = fabsf(norm - STANDARD_GRAVITY) / STANDARD_GRAVITY;
+  bool pass = g_error <= IMU_TEST_MAX_G_ERROR;
+  for (int k = 0; k < 3; k++) pass = pass && fabsf(gyro[k]) <= IMU_TEST_MAX_GYRO_RAD_S;
+  ImuState imu;
+  control_get_imu(imu);
+  Serial.printf("IMU still test result (%.1f s, %d samples, read errors %lu, control period max %lu us):\n",
+                IMU_TEST_DURATION_S, n, (unsigned long)imu.read_errors,
+                (unsigned long)control_max_run_us());
+  Serial.printf("  accel mean x %+6.3f y %+6.3f z %+6.3f m/s2  |a| %.3f (error %.1f%%)\n", accel[0],
+                accel[1], accel[2], norm, 100.0f * g_error);
+  Serial.printf("  gyro  mean x %+.4f y %+.4f z %+.4f rad/s  std x %.4f y %.4f z %.4f  %s\n", gyro[0],
+                gyro[1], gyro[2], sqrtf(var[0]), sqrtf(var[1]), sqrtf(var[2]), pass ? "PASS" : "FAIL");
+}
+
+void toggle_rotation_test() {
+  ImuState imu;
+  control_get_imu(imu);
+  rotating = !rotating;
+  if (rotating) {
+    yaw_start = imu.yaw;
+    Serial.println("rotation test: turn the robot about the vertical, then press 9 again");
+  } else {
+    Serial.printf("rotation test result: %+.1f deg about z (+ = to the left, seen from above)\n",
+                  (imu.yaw - yaw_start) * 180.0f / PI);
+  }
+}
+
+void print_imu_info() {
+  const ImuInfo &info = imu_info;
+  if (!info.found) {
+    Serial.printf("BMI160 not found (SDA %d / SCL %d, also swapped, addresses 0x%02X and 0x%02X)\n",
+                  PIN_I2C_SDA, PIN_I2C_SCL, IMU_I2C_ADDR, IMU_I2C_ADDR_ALT);
+  } else if (info.sda == PIN_I2C_SDA) {
+    Serial.printf("BMI160 found at 0x%02X (SDA GPIO%d, SCL GPIO%d)\n", info.address, info.sda, info.scl);
+  } else {
+    Serial.printf("BMI160 found at 0x%02X with SDA and SCL swapped: SDA is GPIO%d, SCL is GPIO%d. "
+                  "Swap PIN_I2C_SDA and PIN_I2C_SCL in config.h\n", info.address, info.sda, info.scl);
+  }
+  if (!info.found) return;
+  Serial.printf("BMI160 %s: ACC_CONF 0x%02X ACC_RANGE 0x%02X GYR_CONF 0x%02X GYR_RANGE 0x%02X "
+                "PMU_STATUS 0x%02X ERR_REG 0x%02X\n", info.configured ? "configured" : "NOT configured",
+                info.acc_conf, info.acc_range, info.gyr_conf, info.gyr_range, info.pmu_status,
+                info.err_reg);
+}
+
+void print_info() {
+  print_imu_info();
+  if (imu_found) {
+    ImuState imu;
+    control_get_imu(imu);
+    Serial.printf("IMU calibration %s, gyro bias x %+.4f y %+.4f z %+.4f rad/s, read errors %lu\n",
+                  imu.calibration == ImuCal::DONE ? "done" : "running", imu.gyro_bias[0],
+                  imu.gyro_bias[1], imu.gyro_bias[2], (unsigned long)imu.read_errors);
+  }
+  Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
+}
+
+void check_imu_calibration() {
+  if (!imu_found) return;
+  ImuState imu;
+  control_get_imu(imu);
+  if (imu.calibration_restarts != last_cal_restarts) {
+    Serial.println("IMU calibration: the robot moved, starting again");
+  }
+  if (imu.calibration != last_cal) {
+    if (imu.calibration == ImuCal::RUNNING) {
+      Serial.printf("IMU calibration: keep the robot still for %.1f s...\n", IMU_CAL_S);
+    } else {
+      Serial.printf("IMU calibrated: gyro bias x %+.4f y %+.4f z %+.4f rad/s\n", imu.gyro_bias[0],
+                    imu.gyro_bias[1], imu.gyro_bias[2]);
+    }
+  }
+  last_cal = imu.calibration;
+  last_cal_restarts = imu.calibration_restarts;
+}
+
 // Run-time tuning of the controller gains (they reset to PID_KP and PID_KI at boot).
 void tune(char key) {
   float kp, ki;
@@ -241,6 +360,14 @@ void handle_serial() {
         control_set_watchdog(!control_watchdog_on());
         Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
         break;
+      case 'm': show_imu = !show_imu; break;
+      case 'c':
+        if (imu_found) control_imu_calibrate();
+        break;
+      case '8': start_imu_test(); break;
+      case '9': toggle_rotation_test(); break;
+      case '?': print_info(); break;
+      case 'q': paused = !paused; break;
       case 'z': encoders_read(zero); break;
       default: break;
     }
@@ -261,6 +388,7 @@ void check_test() {
   switch (running) {
     case Test::STEP: finish_step_test(); break;
     case Test::CL_STEP: finish_cl_step_test(); break;
+    case Test::IMU_STILL: finish_imu_test(); break;
     default: finish_stability_test(); break;
   }
   control_record_stop();
@@ -280,6 +408,14 @@ void print_status() {
                   (unsigned long)(enc[w].fast - zero[w].fast));
   }
   Serial.println();
+  if (!show_imu) return;
+  ImuState imu;
+  control_get_imu(imu);
+  const ImuSample &m = imu.sample;
+  Serial.printf("IMU a %+6.2f %+6.2f %+6.2f m/s2 |a| %5.2f  g %+7.4f %+7.4f %+7.4f rad/s  yaw %+7.1f deg%s\n",
+                m.accel[0], m.accel[1], m.accel[2],
+                sqrtf(sq(m.accel[0]) + sq(m.accel[1]) + sq(m.accel[2])), m.gyro[0], m.gyro[1],
+                m.gyro[2], imu.yaw * 180.0f / PI, imu.ok ? "" : "  NO DATA");
 }
 
 }  // namespace
@@ -288,19 +424,24 @@ void setup() {
   motors_begin();  // first, so the motors are off as soon as possible
   Serial.begin(SERIAL_BAUD);
   encoders_begin();
+  Serial.println("wheel firmware, block 6: speed PID + watchdog + IMU. Keys: 1 fwd, 2 back, "
+                 "3 opposite, 4 stop, +/- target, 5 open-loop step, 6 stability, 7 closed-loop step, "
+                 "p/o KP, i/u KI, w watchdog on/off, m IMU output, c IMU calibration, 8 IMU still test, "
+                 "9 rotation test, ? info, q pause output, z zero counters");
+  imu_info = imu_begin();
+  imu_found = imu_info.configured;
+  print_imu_info();
   control_begin();
-  Serial.println("wheel firmware, block 5: speed PID + watchdog. Keys: 1 fwd, 2 back, 3 opposite, "
-                 "4 stop, +/- target, 5 open-loop step, 6 stability, 7 closed-loop step, p/o KP, "
-                 "i/u KI, w watchdog on/off, z zero counters");
   Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
 }
 
 void loop() {
   handle_serial();
   check_watchdog();
+  check_imu_calibration();
   check_test();
   const unsigned long now = millis();
-  if (running == Test::NONE && now - last_print_ms >= DEBUG_PERIOD_MS) {
+  if (running == Test::NONE && !paused && now - last_print_ms >= DEBUG_PERIOD_MS) {
     last_print_ms = now;
     print_status();
   }

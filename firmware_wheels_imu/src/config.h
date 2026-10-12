@@ -122,6 +122,43 @@ constexpr float CL_STEP_TEST_DURATION_S = 2.0f;
 constexpr float CL_STEP_MAX_RISE_S = 0.3f;
 constexpr float CL_STEP_MAX_OVERSHOOT = 0.10f;
 
+// ---- IMU (BMI160 on I2C) ----
+// The wiring diagram (docs/wheels.jpeg) may show SDA and SCL the other way
+// round: if the IMU is not found on these pins the firmware also tries them
+// swapped and says which ones work.
+constexpr int PIN_I2C_SDA = 21;
+constexpr int PIN_I2C_SCL = 22;
+constexpr uint32_t I2C_FREQ_HZ = 400000;
+constexpr uint16_t I2C_TIMEOUT_MS = 2;  // a missing IMU must not stall the control task
+constexpr uint8_t IMU_I2C_ADDR = 0x68;      // SAO to GND
+constexpr uint8_t IMU_I2C_ADDR_ALT = 0x69;  // SAO to 3.3 V
+
+// Full scale and output rate. The robot spinning in place at 8 rad/s per
+// wheel turns at ~140 deg/s; 500 deg/s leaves room for bumps.
+constexpr int IMU_GYRO_RANGE_DPS = 500;  // 125, 250, 500, 1000 or 2000
+constexpr int IMU_ACCEL_RANGE_G = 4;     // 2, 4, 8 or 16
+constexpr int IMU_ODR_HZ = 50;           // one sample per control period
+static_assert(IMU_ODR_HZ * CONTROL_PERIOD_S > 0.99f && IMU_ODR_HZ * CONTROL_PERIOD_S < 1.01f,
+              "the IMU is read once per control period");
+
+// Sensor axis (0 = x, 1 = y, 2 = z) and sign for each robot axis, x forward,
+// y left, z up (ROS REP 103). Identity until measured on the robot (test T6).
+constexpr int IMU_AXIS_FOR_ROBOT[3] = {0, 1, 2};
+constexpr float IMU_SIGN_FOR_ROBOT[3] = {1.0f, 1.0f, 1.0f};
+
+// Gyro bias calibration at boot and with key c: mean over IMU_CAL_S with the
+// robot still. If the gyro moves more than IMU_CAL_MAX_SPREAD_RAD_S (max - min
+// on any axis) it starts again.
+constexpr float IMU_CAL_S = 2.0f;
+constexpr float IMU_CAL_MAX_SPREAD_RAD_S = 0.02f;
+
+// IMU still test (key 8): robot still for IMU_TEST_DURATION_S. Pass if |accel|
+// is within IMU_TEST_MAX_G_ERROR of g (the BMI160 zero-g offset is up to
+// ~40 mg) and every gyro mean is within IMU_TEST_MAX_GYRO_RAD_S of 0.
+constexpr float IMU_TEST_DURATION_S = 5.0f;
+constexpr float IMU_TEST_MAX_G_ERROR = 0.04f;
+constexpr float IMU_TEST_MAX_GYRO_RAD_S = 0.005f;
+
 // ---- Serial ----
 constexpr unsigned long SERIAL_BAUD = 115200;
 constexpr unsigned long DEBUG_PERIOD_MS = 200;
