@@ -159,6 +159,28 @@ constexpr float IMU_TEST_DURATION_S = 5.0f;
 constexpr float IMU_TEST_MAX_G_ERROR = 0.04f;
 constexpr float IMU_TEST_MAX_GYRO_RAD_S = 0.005f;
 
-// ---- Serial ----
+// ---- micro-ROS (env microros) ----
+constexpr unsigned long MICROROS_BAUD = 921600;          // chosen in test T7
+constexpr size_t MICROROS_SERIAL_BUFFER_BYTES = 2048;    // UART driver buffers, each direction
+constexpr const char *ROS_NODE_NAME = "wheels_imu";
+constexpr const char *TOPIC_WHEEL_STATES = "wheel_states";  // sensor_msgs/JointState, out
+constexpr const char *TOPIC_IMU = "imu/data_raw";           // sensor_msgs/Imu, out
+constexpr const char *TOPIC_WHEEL_CMD = "wheel_cmd";        // sensor_msgs/JointState velocity, in
+constexpr const char *JOINT_NAMES[2] = {"left_wheel_joint", "right_wheel_joint"};
+constexpr const char *IMU_FRAME_ID = "imu_link";
+constexpr float PUBLISH_PERIOD_S = 0.02f;           // wheel states and IMU, 50 Hz
+constexpr uint32_t AGENT_PING_PERIOD_MS = 500;      // how often to look for (or check) the agent
+constexpr int AGENT_PING_TIMEOUT_MS = 100;
+constexpr uint32_t TIME_SYNC_PERIOD_MS = 10000;     // clock resync with the agent
+constexpr int TIME_SYNC_TIMEOUT_MS = 1000;
+constexpr int EXECUTOR_SPIN_MS = 5;
+constexpr size_t JOINT_NAME_MAX = 32;               // received joint names, with the terminator
+
+// IMU noise for sensor_msgs/Imu covariances (variance = std^2): the largest
+// std at rest over the three axes, IMU still test (key 8), 2026-10-12.
+constexpr float IMU_GYRO_STD_RAD_S = 0.0007f;  // measured 0.0005-0.0007
+constexpr float IMU_ACCEL_STD_M_S2 = 0.01f;    // measured 0.0070-0.0099
+
+// ---- Serial (env debug) ----
 constexpr unsigned long SERIAL_BAUD = 115200;
 constexpr unsigned long DEBUG_PERIOD_MS = 200;

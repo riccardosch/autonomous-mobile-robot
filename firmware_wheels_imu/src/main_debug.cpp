@@ -1,4 +1,5 @@
-// Wheel firmware for the ESP32 DevKit.
+// Wheel firmware for the ESP32 DevKit, debug build (env debug): test keys on
+// the serial monitor. The micro-ROS build is main_microros.cpp.
 //
 // Block 6: closed-loop wheel speed (PI + feedforward) with a command
 // watchdog, commanded from the serial monitor or from tools/cmd_sender.py,
@@ -199,7 +200,7 @@ void start_imu_test() {
 void finish_imu_test() {
   const RecordedSample *s = control_record_samples();
   const int n = periods(IMU_TEST_DURATION_S);
-  float accel[3] = {}, gyro[3] = {}, var[3] = {};
+  float accel[3] = {}, gyro[3] = {}, var[3] = {}, accel_var[3] = {};
   for (int i = 0; i < n; i++) {
     for (int k = 0; k < 3; k++) {
       accel[k] += s[i].imu.accel[k] / n;
@@ -207,7 +208,10 @@ void finish_imu_test() {
     }
   }
   for (int i = 0; i < n; i++) {
-    for (int k = 0; k < 3; k++) var[k] += sq(s[i].imu.gyro[k] - gyro[k]) / n;
+    for (int k = 0; k < 3; k++) {
+      var[k] += sq(s[i].imu.gyro[k] - gyro[k]) / n;
+      accel_var[k] += sq(s[i].imu.accel[k] - accel[k]) / n;
+    }
   }
   const float norm = sqrtf(sq(accel[0]) + sq(accel[1]) + sq(accel[2]));
   const float g_error = fabsf(norm - STANDARD_GRAVITY) / STANDARD_GRAVITY;
@@ -218,8 +222,9 @@ void finish_imu_test() {
   Serial.printf("IMU still test result (%.1f s, %d samples, read errors %lu, control period max %lu us):\n",
                 IMU_TEST_DURATION_S, n, (unsigned long)imu.read_errors,
                 (unsigned long)control_max_run_us());
-  Serial.printf("  accel mean x %+6.3f y %+6.3f z %+6.3f m/s2  |a| %.3f (error %.1f%%)\n", accel[0],
-                accel[1], accel[2], norm, 100.0f * g_error);
+  Serial.printf("  accel mean x %+6.3f y %+6.3f z %+6.3f m/s2  |a| %.3f (error %.1f%%)  "
+                "std x %.4f y %.4f z %.4f\n", accel[0], accel[1], accel[2], norm, 100.0f * g_error,
+                sqrtf(accel_var[0]), sqrtf(accel_var[1]), sqrtf(accel_var[2]));
   Serial.printf("  gyro  mean x %+.4f y %+.4f z %+.4f rad/s  std x %.4f y %.4f z %.4f  %s\n", gyro[0],
                 gyro[1], gyro[2], sqrtf(var[0]), sqrtf(var[1]), sqrtf(var[2]), pass ? "PASS" : "FAIL");
 }
