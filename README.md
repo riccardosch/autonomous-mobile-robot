@@ -46,18 +46,25 @@ The LiDAR's 4-wire connector goes to the ESP32-C3 SuperMini: TX → GPIO20, M_SC
 
 The ENA/ENB jumpers on the L298N are removed: the motor speed is set by PWM from the ESP32. Top left: the encoder on the back of a wheel motor. Bottom left: the ESP32 ↔ BMI160 wiring on its own.
 
-cd ~/agv/autonomous-mobile-robot/firmware_wheels_imu
-~/.platformio/penv/bin/pio run -t upload --upload-port /dev/ttyUSB0
-~/.platformio/penv/bin/pio device monitor --port /dev/ttyUSB0
+## Robot model in RViz2
+
+The first custom Xacro model was checked in RViz2 on 2026-10-18: a 340 mm diameter chassis, 60 mm high and 20 mm above the floor, with 70 mm wheels spaced approximately 235 mm apart. The IMU frame is centred in the body, 65 mm above the floor.
+
+![Roomba model in RViz2 with wheel and IMU coordinate frames](docs/agv_rviz.png)
+
+Preview with stationary wheels and TF axes enabled. RViz reports valid transforms for the base, both wheels and `imu_link`. The transparent body makes the internal frames visible; red, green and blue mark the X, Y and Z axes. This checks the model display and TF tree; live encoder feedback and odometry are separate steps. The screenshot shows the model before adding the LiDAR frame. Its scan origin is now set 65 mm above and 115 mm behind the IMU, on the centreline (measured on 2026-10-20); scan orientation remains to be checked.
+
+Model, dimensions and launch instructions: [agv_description](raspberry/src/agv_description/README.md).
 
 ## Repository layout
 
 | Folder / file | Contents |
 |---|---|
 | [firmware_lidar/](firmware_lidar/) | PlatformIO firmware for the ESP32-C3 that reads the LiDAR |
-| [firmware_wheels_imu/](firmware_wheels_imu/) | PlatformIO firmware for the ESP32 that drives the wheel motors, reads the encoders and (next) the IMU |
+| [firmware_wheels_imu/](firmware_wheels_imu/) | PlatformIO firmware for the ESP32 that drives the wheel motors, reads the encoders and the IMU, and talks to ROS 2 over micro-ROS |
 | [raspberry/](raspberry/) | ROS 2 workspace with the nodes that run on the Raspberry Pi |
 | [docs/devlog.md](docs/devlog.md) | Development log (chronological) |
+| [docs/caseLidar.zip](docs/caseLidar.zip) | Files to 3D print the LiDAR case |
 
 ## Project status
 
@@ -74,8 +81,10 @@ cd ~/agv/autonomous-mobile-robot/firmware_wheels_imu
 | Wheel speed PID (block 4) | ✅ Holds 2-8 rad/s within 0.01 rad/s; transients to retune on the ground |
 | Wheel command watchdog (block 5) | ✅ Wheels stop 0.5 s after the last command |
 | IMU on the wheel ESP32 (block 6) | ✅ Acceleration and angular rate in the robot frame, 90° turn read as 90.5° |
-| Wheel firmware: transients retuned on the ground, micro-ROS layer | ⏳ To do |
-| Wheel odometry | ⏳ To do |
+| micro-ROS node on the wheel ESP32 (block 7) | ✅ Wheel states and IMU out, wheel speed targets in (test T8) |
+| Robot model (`agv_description`) | ✅ Chassis, wheel, IMU and LiDAR frames shown in RViz2 (static preview) |
+| Wheel PI transients retuned on the ground | ⏳ To do |
+| Wheel odometry (`agv_odometry`) | 🔧 Node written and checked with simulated wheel data; to test on the robot |
 | SLAM | ⏳ To do |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |
 | LiDAR bracket (Fusion) | 🔍 To check: tolerances and mounting |

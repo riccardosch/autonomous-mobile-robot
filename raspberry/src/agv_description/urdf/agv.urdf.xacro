@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="agv">
+  <!-- Dimensions measured on 2026-10-18. SI units. Separation is approximate. -->
+  <xacro:arg name="body_diameter" default="0.340"/>
+  <xacro:arg name="wheel_separation" default="0.235"/>
+  <xacro:arg name="wheel_diameter" default="0.070"/>
+  <xacro:arg name="wheel_width" default="0.015"/>
+  <xacro:arg name="body_height" default="0.060"/>
+  <xacro:arg name="body_ground_clearance" default="0.020"/>
+  <xacro:arg name="imu_top_offset" default="0.015"/>
+  <!-- Scan origin relative to the IMU, measured on 2026-10-20: 65 mm above and 115 mm behind (-X), on the centreline. -->
+  <xacro:arg name="lidar_above_imu" default="0.065"/>
+  <xacro:arg name="lidar_x_offset" default="-0.115"/>
+  <xacro:property name="lidar_up" value="$(arg lidar_above_imu)"/>
+  <xacro:property name="lidar_x" value="$(arg lidar_x_offset)"/>
+  <xacro:property name="imu_offset" value="$(arg imu_top_offset)"/>
+  <xacro:property name="body_d" value="$(arg body_diameter)"/>
+  <xacro:property name="wheel_d" value="$(arg wheel_diameter)"/>
+  <xacro:property name="wheel_w" value="$(arg wheel_width)"/>
+  <xacro:property name="separation" value="$(arg wheel_separation)"/>
+  <xacro:property name="body_h" value="$(arg body_height)"/>
+  <xacro:property name="clearance" value="$(arg body_ground_clearance)"/>
+
+  <material name="body_grey"><color rgba="0.55 0.57 0.60 0.7"/></material>
+  <material name="tyre_black"><color rgba="0.08 0.08 0.08 1"/></material>
+
+  <!-- x forward, y left, z up. Assume axle midpoint lies below body centre. -->
+  <link name="base_footprint"/>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 ${clearance + body_h / 2 - wheel_d / 2}"/>
+      <geometry><cylinder radius="${body_d / 2}" length="${body_h}"/></geometry>
+      <material name="body_grey"/>
+    </visual>
+  </link>
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/><child link="base_link"/>
+    <origin xyz="0 0 ${wheel_d / 2}"/>
+  </joint>
+
+  <xacro:macro name="wheel" params="side sign">
+    <link name="${side}_wheel_link">
+      <visual>
+        <origin rpy="${pi / 2} 0 0"/>
+        <geometry><cylinder radius="${wheel_d / 2}" length="${wheel_w}"/></geometry>
+        <material name="tyre_black"/>
+      </visual>
+    </link>
+    <joint name="${side}_wheel_joint" type="continuous">
+      <parent link="base_link"/><child link="${side}_wheel_link"/>
+      <origin xyz="0 ${sign * separation / 2} 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+  <xacro:wheel side="left" sign="${1}"/>
+  <xacro:wheel side="right" sign="${-1}"/>
+  <!-- IMU centred horizontally, 15 mm below the top of the body.
+       Axes match the robot-frame data already published by the firmware. -->
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/><child link="imu_link"/>
+    <origin xyz="0 0 ${clearance + body_h - imu_offset - wheel_d / 2}" rpy="0 0 0"/>
+  </joint>
+  <!-- Level scan plane; yaw alignment still needs checking with real scans. -->
+  <link name="laser"/>
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/><child link="laser"/>
+    <origin xyz="${lidar_x} 0 ${clearance + body_h - imu_offset + lidar_up - wheel_d / 2}" rpy="0 0 0"/>
+  </joint>
+  <!-- Caster, collisions and inertias await measurements.
+       No simulation plugins or motor command interfaces in this model. -->
+</robot>

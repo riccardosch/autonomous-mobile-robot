@@ -5,6 +5,47 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-10-21: Wheel controller on the ground (T9)
+
+### Done
+- Step test with the robot on the floor (test T9), four sets of runs. Steady state within 0.12 rad/s on both wheels; right overshoot 1-4%, left 11-18%. Accepted with the gains unchanged.
+- Debug build: keys `k`/`j` for the integral limit, gains printed with every step result, filtered speed of a stopped wheel set to exactly 0 (it showed `1.4e-45` in T8).
+- LiDAR frame moved in the robot model: 115 mm behind and 65 mm above the IMU.
+
+### Learned
+- On the ground the right wheel needs ~0.10 more duty than the left at 4 rad/s; the integral covers it.
+- Three good runs are not proof: a lower integral limit passed once and failed after being written in `config.h`. The run-to-run spread (left 7-18%) is larger than the effect of small gain changes, and a quick calculation showed the integral never reaches the limit during the rise.
+- A step from 0 to 4 rad/s in 20 ms is the worst case; in use `diff_drive_controller` limits the acceleration, and small speed differences between the wheels are measured by the odometry and corrected by the levels above (IMU, navigation), not by ever finer tuning.
+
+### Next steps
+- Wheel odometry on the Pi: `/wheel_states` → `/odom` and `/cmd_vel` → `/wheel_cmd`, then calibrate wheel radius and separation.
+- Check the step response again once the Kinect is mounted.
+
+---
+
+## 2026-10-20: Wheel firmware, block 7 (micro-ROS) and robot model
+
+### Done
+- micro-ROS build of the wheel firmware (`pio run -e microros`): one node, `wheels_imu`, over the USB serial at 921600 baud. Out: `/wheel_states` (JointState, position and velocity) and `/imu/data_raw` (raw Imu) at 50 Hz; in: `/wheel_cmd` (JointState velocity targets). The debug build with the test keys stays as env `debug`; both share the control task, motors, encoders and IMU code.
+- `micro_ros_agent` built on the Pi in `~/microros_ws` with `micro_ros_setup` (jazzy), since it is not in the Ubuntu packages.
+- Test T8 passed: node visible in ROS 2, both outputs at 50.00 Hz, stamps equal to the Pi clock, targets of 4/4 and -2/+2 rad/s followed within 1%, wheels stopped by the watchdog when the commands stop, node back after an agent restart.
+- First robot model, `raspberry/src/agv_description`: Xacro with chassis, wheels, `imu_link` and `laser` frames, checked in RViz2 with static wheels.
+
+### Learned
+- In the micro-ROS build a missing IMU shows up only as a topic with no messages. During T8 the BMI160 connection had come loose; it took the debug build (key `?`) to see it.
+- `ros2 topic hz` and `echo` take a few seconds to start on the Pi, and their output is buffered when piped: short `timeout` runs print nothing even when the topic is fine.
+
+### Problems
+- A burst of thousands of `session re-established` lines in the agent log at one start, cause unknown; it did not come back at the next start.
+
+### Next steps
+- Publish the IMU status (found, read errors, calibration) from the micro-ROS build.
+- Check the robot model with the live `/wheel_states`.
+- ros2_control with `diff_drive_controller`: `/cmd_vel` in, `/odom` out.
+- Retune the wheel controller on the ground; measure the encoder signal voltage.
+
+---
+
 ## 2026-10-12: Wheel firmware, block 6 (BMI160 IMU)
 
 ### Done
