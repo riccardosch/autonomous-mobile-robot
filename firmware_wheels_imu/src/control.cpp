@@ -179,18 +179,17 @@ bool control_watchdog_tripped() {
   return tripped;
 }
 
-void control_set_gains(float kp, float ki) {
+void control_set_gains(const PiGains &g) {
   portENTER_CRITICAL(&mux);
-  gains.kp = kp;
-  gains.ki = ki;
+  gains = g;
   portEXIT_CRITICAL(&mux);
 }
 
-void control_get_gains(float &kp, float &ki) {
+PiGains control_get_gains() {
   portENTER_CRITICAL(&mux);
-  kp = gains.kp;
-  ki = gains.ki;
+  const PiGains g = gains;
   portEXIT_CRITICAL(&mux);
+  return g;
 }
 
 void control_get_state(WheelState out[WHEEL_COUNT]) {

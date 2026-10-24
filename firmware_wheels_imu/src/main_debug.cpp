@@ -17,6 +17,7 @@
 //      and, in closed loop, the error from the target
 //   7  closed-loop step test: TEST_SPEED from standstill, prints rise time, overshoot, error
 //   p/o  KP up/down by TUNE_FACTOR      i/u  KI up/down by TUNE_FACTOR
+//   k/j  integral limit up/down by TUNE_FACTOR
 //   w  watchdog on/off (on at boot): with it on, keys 1-3 and +/- drive the
 //      wheels only for CMD_TIMEOUT_S; tests 6 and 7 need it off
 //   m  IMU line in the periodic output on/off
@@ -131,6 +132,11 @@ void finish_step_test() {
   }
 }
 
+void print_gains() {
+  const PiGains g = control_get_gains();
+  Serial.printf("gains: KP %.4f  KI %.4f  I_MAX %.3f\n", g.kp, g.ki, g.i_max);
+}
+
 // 10-90% rise time, overshoot and steady error of the filtered speed.
 void finish_cl_step_test() {
   control_set_target(0.0f, 0.0f);
@@ -139,6 +145,7 @@ void finish_cl_step_test() {
   const int settled = periods(STEP_TEST_SETTLED_S);
   Serial.printf("closed-loop step result (target %.1f rad/s, time resolution %.2f s):\n", TEST_SPEED,
                 CONTROL_PERIOD_S);
+  print_gains();
   for (int w = 0; w < WHEEL_COUNT; w++) {
     int i10 = 0;
     while (i10 < n && s[i10].velocity[w] < 0.1f * TEST_SPEED) i10++;
@@ -270,6 +277,7 @@ void print_info() {
                   imu.gyro_bias[1], imu.gyro_bias[2], (unsigned long)imu.read_errors);
   }
   Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
+  print_gains();
 }
 
 void check_imu_calibration() {
@@ -291,16 +299,17 @@ void check_imu_calibration() {
   last_cal_restarts = imu.calibration_restarts;
 }
 
-// Run-time tuning of the controller gains (they reset to PID_KP and PID_KI at boot).
+// Run-time tuning of the controller gains (they reset to the config.h values at boot).
 void tune(char key) {
-  float kp, ki;
-  control_get_gains(kp, ki);
-  if (key == 'p') kp *= TUNE_FACTOR;
-  if (key == 'o') kp /= TUNE_FACTOR;
-  if (key == 'i') ki *= TUNE_FACTOR;
-  if (key == 'u') ki /= TUNE_FACTOR;
-  control_set_gains(kp, ki);
-  Serial.printf("gains: KP %.4f  KI %.4f\n", kp, ki);
+  PiGains g = control_get_gains();
+  if (key == 'p') g.kp *= TUNE_FACTOR;
+  if (key == 'o') g.kp /= TUNE_FACTOR;
+  if (key == 'i') g.ki *= TUNE_FACTOR;
+  if (key == 'u') g.ki /= TUNE_FACTOR;
+  if (key == 'k') g.i_max *= TUNE_FACTOR;
+  if (key == 'j') g.i_max /= TUNE_FACTOR;
+  control_set_gains(g);
+  print_gains();
 }
 
 // A "v <left> <right>" line from a script.
@@ -360,7 +369,7 @@ void handle_serial() {
           control_set_target(TEST_SPEED, TEST_SPEED);
         }
         break;
-      case 'p': case 'o': case 'i': case 'u': tune(key); break;
+      case 'p': case 'o': case 'i': case 'u': case 'k': case 'j': tune(key); break;
       case 'w':
         control_set_watchdog(!control_watchdog_on());
         Serial.printf("watchdog %s\n", control_watchdog_on() ? "on" : "off");
@@ -431,7 +440,7 @@ void setup() {
   encoders_begin();
   Serial.println("wheel firmware, block 6: speed PID + watchdog + IMU. Keys: 1 fwd, 2 back, "
                  "3 opposite, 4 stop, +/- target, 5 open-loop step, 6 stability, 7 closed-loop step, "
-                 "p/o KP, i/u KI, w watchdog on/off, m IMU output, c IMU calibration, 8 IMU still test, "
+                 "p/o KP, i/u KI, k/j I_MAX, w watchdog on/off, m IMU output, c IMU calibration, 8 IMU still test, "
                  "9 rotation test, ? info, q pause output, z zero counters");
   imu_info = imu_begin();
   imu_found = imu_info.configured;

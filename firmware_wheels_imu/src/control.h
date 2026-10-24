@@ -2,6 +2,7 @@
 
 #include "encoders.h"
 #include "imu.h"
+#include "pid.h"
 
 struct WheelState {
   float position;      // rad since start, + = forward
@@ -48,9 +49,9 @@ bool control_watchdog_on();
 // True from a watchdog stop until the next target.
 bool control_watchdog_tripped();
 
-// Speed controller gains, shared by both wheels. Start from PID_KP and PID_KI.
-void control_set_gains(float kp, float ki);
-void control_get_gains(float &kp, float &ki);
+// Speed controller gains, shared by both wheels. Start from PID_KP, PID_KI and PID_I_MAX.
+void control_set_gains(const PiGains &g);
+PiGains control_get_gains();
 
 // Consistent copy of the latest state of both wheels.
 void control_get_state(WheelState out[WHEEL_COUNT]);

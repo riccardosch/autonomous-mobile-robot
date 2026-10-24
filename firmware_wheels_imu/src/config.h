@@ -71,11 +71,17 @@ constexpr float VELOCITY_ZERO_TIMEOUT_S = 0.1f;
 // block 3 (K ~15 rad/s per unit duty, time constant 0.10 s): KP = 1 / K.
 // KI lowered from KP / time constant (0.67) to 0.20 and the integral limited:
 // with the measured feedforward the integral only corrects small errors, and
-// a large one caused 34% overshoot (test T4, wheels lifted). To be retuned
-// with the robot on the ground (keys p/o and i/u change them at run time).
+// a large one caused 34% overshoot (test T4, wheels lifted). On the ground
+// (test T9, without the Kinect) the steady state is within 0.1 rad/s and the
+// right wheel overshoots 1-4%, the left 11-18% on a step from standstill;
+// neither a lower I_MAX nor a lower KP changed it. Accepted: in use the
+// targets come from diff_drive_controller with limited acceleration, not as
+// steps. On the ground the right wheel needs ~0.10 of integral at 4 rad/s.
+// Recheck with key 7 once the Kinect is mounted (keys p/o, i/u and k/j change
+// the gains at run time).
 constexpr float PID_KP = 0.067f;     // duty per rad/s of error
 constexpr float PID_KI = 0.20f;      // duty per rad of integrated error
-constexpr float PID_I_MAX = 0.20f;   // |integral term| limit, in duty; also covers a ~20% lower supply
+constexpr float PID_I_MAX = 0.20f;   // |integral term| limit, in duty
 
 // Feedforward: duty = FF_OFFSET + |target| / FF_GAIN, with the target's sign.
 // Straight-line fit of the steady closed-loop duty at 2, 4, 6 and 8 rad/s
@@ -97,7 +103,7 @@ constexpr bool CMD_WATCHDOG_ON_AT_BOOT = true;  // key w toggles it at run time
 constexpr float TEST_DUTY = 0.5f;         // open-loop duty of the step test (key 5)
 constexpr float TEST_SPEED = 4.0f;        // rad/s, target of keys 1-3 and of key 7
 constexpr float TEST_SPEED_STEP = 1.0f;   // rad/s, step of keys + and -
-constexpr float TUNE_FACTOR = 1.2f;       // keys p/o and i/u multiply or divide KP and KI by this
+constexpr float TUNE_FACTOR = 1.2f;       // keys p/o, i/u, k/j multiply or divide KP, KI, I_MAX by this
 
 // Step test (key 5): duty TEST_DUTY from standstill for this long. The steady
 // speed is the mean over the last STEP_TEST_SETTLED_S.

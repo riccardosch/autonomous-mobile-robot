@@ -1,6 +1,6 @@
 # Wheel firmware test record
 
-Every test run on the wheel firmware, with the code it was run on, the procedure, the pass criterion and the serial output lines that show the result. All tests so far were run with the wheels lifted off the ground, the ESP32 on `/dev/ttyUSB0` and the PlatformIO serial monitor (see [../README.md](../README.md#build-and-flash)).
+Every test run on the wheel firmware, with the code it was run on, the procedure, the pass criterion and the serial output lines that show the result. All tests so far were run with the wheels lifted off the ground and the ESP32 on `/dev/ttyUSB0`; T1-T6 with the PlatformIO serial monitor (see [../README.md](../README.md#build-and-flash)), T7 with its own script, T8 through ROS 2.
 
 | ID | Date | Block | What it checks | Result |
 |---|---|---|---|---|
@@ -11,6 +11,8 @@ Every test run on the wheel firmware, with the code it was run on, the procedure
 | [T5](#t5-command-watchdog) | 2026-10-11 | 5 | Wheels stop when the commands stop | ✅ PASS |
 | [T6](#t6-imu) | 2026-10-12 | 6 | IMU detection, still readings, axes, rotation | ✅ PASS |
 | [T7](#t7-serial-link-speed) | 2026-10-12 | 7 (micro-ROS) | USB serial link up to 921600 baud | ✅ PASS |
+| [T8](#t8-micro-ros-node) | 2026-10-20 | 7 (micro-ROS) | micro-ROS node: topics, rates, time stamps, commands, watchdog, reconnection | ✅ PASS |
+| [T9](#t9-speed-controller-on-the-ground) | 2026-10-21 | 4 (retune) | Speed controller step response with the robot on the ground | ✅ steady state / ⚠️ left step overshoot 11-18%, accepted |
 
 ---
 
@@ -402,3 +404,78 @@ all PASS
 ```
 
 Note: a first version of the script switched back to 115200 too late and missed the ESP32's reports; it also showed a few bytes "missing" at 230400 and 460800 and no answer to the first command after boot. With the timing fixed (and the ESP32's own byte count now printed) every rate passes, so those were script errors, not link errors. The 60 s run at 921600 was already clean with the first version.
+
+## T8: micro-ROS node
+
+The `microros` build talking to ROS 2 Jazzy on the Pi through `micro_ros_agent`: does the node appear, do wheel states and IMU arrive at 50 Hz with correct time stamps, do wheel targets reach the controller, and does it recover when the agent restarts?
+
+| | |
+|---|---|
+| Code | Commit `2d7b44f`: [src/main_microros.cpp](../src/main_microros.cpp), env `microros` in [platformio.ini](../platformio.ini), micro-ROS constants in [src/config.h](../src/config.h) |
+| Procedure | Wheels lifted, robot still at every agent start (the agent resets the ESP32, which calibrates the gyro). Flash with `pio run -e microros -t upload`; start `ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600`; check `ros2 node list`, `ros2 topic hz` on both outputs, one IMU message, the wheel-state stamp against `date +%s`; publish `/wheel_cmd` at 20 Hz with 4/4 rad/s and then -2/+2 rad/s and read `/wheel_states`; stop the publisher; restart the agent |
+| Criterion | Node `/wheels_imu`; both outputs at 50 Hz; IMU in `imu_link` with orientation marked as not provided; stamps equal to the Pi clock within 1 s; wheel speeds within max(3%, 0.1 rad/s) of the targets; wheels stop within ~0.5 s of the last command; node back after an agent restart |
+| Result | ✅ PASS |
+
+```
+[...] create_publisher   | publisher created  ... publisher_id: 0x000(3)
+[...] create_publisher   | publisher created  ... publisher_id: 0x001(3)
+[...] create_subscriber  | subscriber created ... subscriber_id: 0x000(4)
+/wheels_imu
+/wheel_states   average rate: 50.001   min: 0.016s max: 0.026s std dev: 0.00104s window: 2934
+/imu/data_raw   average rate: 50.001   min: 0.019s max: 0.021s std dev: 0.00098s window: 910
+frame_id: imu_link   orientation_covariance: [-1.0, ...]
+angular_velocity:    x -0.0006  y +0.0008  z -0.0012 rad/s
+linear_acceleration: x -0.49    y -0.52    z +10.00  m/s2
+stamp sec: 1792443527   date +%s: 1792443527
+target 4/4:   velocity [3.92 ... 4.07, 3.93 ... 4.07] rad/s over ~10 s
+target -2/+2: velocity [-2.018, 2.012] rad/s
+publisher stopped: wheels stopped (seen by eye), then velocity [~0, ~0]
+agent restarted: /wheels_imu back, IMU and wheel states arriving, stamp 1792528470 = date
+```
+
+Notes:
+- **IMU missing on the first run.** `/imu/data_raw` existed but carried no messages. The debug build showed `BMI160 not found (SDA 21 / SCL 22, also swapped, addresses 0x68 and 0x69)`: the IMU connection had come loose. Reconnected, it read the same configuration as in T6 (`ACC_CONF 0x27 ACC_RANGE 0x05 GYR_CONF 0x27 GYR_RANGE 0x02 PMU_STATUS 0x14 ERR_REG 0x00`, read errors 0) and the IMU part of the test was repeated. In the `microros` build a missing IMU is only visible as missing messages: an IMU status output is to be added.
+- **Burst of `session re-established` lines** in the agent log, thousands within ~25 ms, 7 s after one agent start; the agent then ran normally (~1% CPU) and the burst did not come back at the next start. Cause not known; to look into if it happens again.
+- With the wheels stopped the published speed is `±1.4e-45` instead of 0: the low-pass filter decays to the smallest float. Harmless, to be cleaned up.
+- The disconnection test covers an agent restart, which also resets the ESP32. Losing the agent without an ESP32 reset (the `LOST` state) was not tested.
+
+## T9: Speed controller on the ground
+
+T4 left the step transients out of specification with the wheels lifted. The same closed-loop step test, now with the robot on the floor (Pi and motor battery on board, no Kinect and no dummy weight).
+
+| | |
+|---|---|
+| Code | Debug build, committed with this entry: keys `k`/`j` added to change the integral limit at run time, gains printed with every step result, and the filtered speed of a stopped wheel set to exactly 0 ([src/main_debug.cpp](../src/main_debug.cpp), [src/control.cpp](../src/control.cpp), [src/velocity.cpp](../src/velocity.cpp)) |
+| Procedure | Robot on the floor with at least 1 m free in front, `w` (watchdog off), `7`: 4 rad/s from standstill for 2 s (~0.3 m). Robot back to the start line before each run. Three runs per set of gains, gains changed at run time with `j`/`k` and `o`/`p` |
+| Criterion | As T4: 10-90% rise ≤ 0.3 s, overshoot ≤ 10%, steady error within max(3%, 0.1 rad/s) = 0.12 rad/s |
+| Result | ✅ rise and steady state on both wheels in every run; right overshoot 1-4%. ❌ left overshoot 11-18% with every set of gains tried. **Accepted**, gains unchanged (KP 0.067, KI 0.20, I_MAX 0.20) |
+
+| Gains (KP / KI / I_MAX) | Run | L rise | L overshoot | L steady | R rise | R overshoot | R steady |
+|---|---|---|---|---|---|---|---|
+| 0.067 / 0.20 / 0.20 (config.h) | 1 | 0.10 s | 16.3% | 4.05 | 0.14 s | 1.6% | 3.92 |
+| | 2 | 0.12 s | 12.2% | 4.03 | 0.12 s | 3.0% | 4.01 |
+| | 3 | 0.14 s | 10.7% | 3.97 | 0.14 s | 1.3% | 3.91 |
+| 0.067 / 0.20 / 0.167 (key `j`) | 1 | 0.12 s | 8.9% | 4.02 | 0.14 s | 1.0% | 3.98 |
+| | 2 | 0.14 s | 9.7% | 4.12 | 0.14 s | 3.9% | 4.09 |
+| | 3 | 0.12 s | 6.5% | 3.95 | 0.14 s | 2.7% | 3.93 |
+| 0.067 / 0.20 / 0.167 (written in config.h, reflashed) | 1 | 0.12 s | 12.1% | 3.93 | 0.12 s | 3.4% | 3.98 |
+| | 2 | 0.12 s | 11.6% | 4.03 | 0.12 s | 2.7% | 3.94 |
+| | 3 | 0.12 s | 16.4% | 4.08 | 0.14 s | 2.7% | 3.99 |
+| 0.056 / 0.20 / 0.20 (keys `k`, `o`) | 1 | 0.14 s | 12.5% | 4.03 | 0.14 s | 3.3% | 3.95 |
+| | 2 | 0.14 s | 18.0% | 4.08 | 0.14 s | 3.9% | 4.01 |
+| | 3 | 0.14 s | 12.3% | 3.96 | 0.14 s | 3.6% | 4.05 |
+
+```
+closed-loop step result (target 4.0 rad/s, time resolution 0.02 s):
+gains: KP 0.0670  KI 0.2000  I_MAX 0.200
+  L  rise 0.10 s  overshoot 16.3%  steady  +4.05 rad/s (error +0.05)  FAIL
+  R  rise 0.14 s  overshoot 1.6%  steady  +3.92 rad/s (error -0.08)  PASS
+L    663 ticks  w  +3.89 rad/s  target +4.00  duty +0.36  glitch 0 fast 0 | R    629 ticks  w  +4.02 rad/s  target +4.00  duty +0.45  glitch 0 fast 0
+```
+
+Notes:
+- **On the ground the right wheel needs much more duty than the left** at 4 rad/s: 0.42-0.45 against 0.35-0.37, while the lifted-wheel feedforward gives ~0.33 to both. The integral covers the difference (~0.10 on the right).
+- **The 0.167 integral limit looked like a fix but was not.** The three runs with it passed, the three after writing it in `config.h` did not: the spread between runs (left 7-18%) is larger than the effect. A rough count also rules it out: during the ~0.12 s rise the left integral reaches only ~0.2 × 2 rad/s × 0.12 s ≈ 0.05, far from either limit. A 17% lower KP did not change it either. `PID_I_MAX` went back to 0.20.
+- **Why it is accepted:** the steady state, which sets how well the robot follows a speed, is within 0.12 rad/s on both wheels; the left overshoot lasts about a tenth of a second and appears on a step from 0 to 4 rad/s in one period. In use the wheel targets will come from `diff_drive_controller`, which limits the acceleration. If it matters later, the next step is to record the whole response of a step (the 100 samples are already stored) or to limit the target acceleration in the firmware.
+- To check again with key `7` once the Kinect (~1.4 kg) is mounted.
+

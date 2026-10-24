@@ -1,17 +1,18 @@
 # firmware_wheels_imu
 
-Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N, reads their encoders and reads the BMI160 IMU. In this phase it has no ROS: everything is tested from the serial monitor. micro-ROS will be added later as a communication layer on top: one node with wheel JointState and raw IMU data out, wheel speed targets in.
+Firmware for the ESP32 DevKit (38 pins) that drives the two Roomba wheel motors through an L298N, reads their encoders and reads the BMI160 IMU. Two builds share the same control code: `debug`, tested from the serial monitor with single-key commands, and `microros`, a ROS 2 node over the USB serial with wheel JointState and raw IMU data out and wheel speed targets in.
 
-> **Status (2026-10-12):** blocks 1-6 done and tested. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s, the watchdog stops the wheels 0.5 s after the last command, and the IMU gives acceleration and angular rate in the robot frame (90° turn measured as 90.5°). Still open: the controller transients (overshoot from standstill, recovery after a hand brake), to retune with the robot on the ground; then the micro-ROS layer.
+> **Status (2026-10-21):** blocks 1-7 done and tested. The speed controller holds the target within 0.01 rad/s from 2 to 8 rad/s, the watchdog stops the wheels 0.5 s after the last command, the IMU gives acceleration and angular rate in the robot frame (90° turn measured as 90.5°), and the micro-ROS node publishes wheels and IMU at 50 Hz and takes wheel speed targets from ROS 2 (test T8). On the ground (test T9) the steady state holds; the left wheel still overshoots 11-18% on a step from standstill, accepted because in use the targets come with limited acceleration.
 
 | Block | Contents | Status |
 |---|---|---|
 | 1 | Encoder counters | ✅ 516.6 transitions per revolution, no glitches |
 | 2 | Motors: PWM + direction on the L298N | ✅ Directions and signed ticks correct, no glitches with the motors on |
 | 3 | Wheel speed in rad/s | ✅ Spread 0.5-0.8% at ~7 rad/s; step response measured |
-| 4 | Per-wheel speed PID | ✅ Steady state within 0.01 rad/s, spread ≤ 0.4%. ⚠️ Overshoot 25-28% from standstill (target 10%): retune on the ground |
+| 4 | Per-wheel speed PID | ✅ Steady state within 0.01 rad/s, spread ≤ 0.4%. ⚠️ Step overshoot from standstill 25-28% lifted; on the ground (T9) right 1-4%, left 11-18%, accepted |
 | 5 | Command watchdog | ✅ Wheels stop 0.5 s after the last target |
 | 6 | BMI160 IMU | ✅ \|a\| within 2% of g, gyro noise ~0.0006 rad/s, 90° turn read as 90.5° |
+| 7 | micro-ROS node | ✅ Wheel states and IMU at 50 Hz with synchronised stamps, targets followed within 1%, recovers after an agent restart |
 
 Every test run on the hardware, with the commit and files it used and the output that shows the result, is in the [test record](tests/README.md).
 
@@ -66,7 +67,7 @@ Open-loop results (2026-10-11, wheels lifted):
 
 ## Speed estimate
 
-A FreeRTOS task on core 0 runs every 20 ms (`vTaskDelayUntil`), reads the encoders and computes the position (rad) and speed (rad/s) of each wheel. `loop()` and, later, micro-ROS read them with `control_get_state()`.
+A FreeRTOS task on core 0 runs every 20 ms (`vTaskDelayUntil`), reads the encoders and computes the position (rad) and speed (rad/s) of each wheel. `loop()` (debug output or micro-ROS) reads them with `control_get_state()`.
 
 - **Timed edges (M/T method).** The speed is the ticks between the last edge of the previous period and the last edge of this one, divided by the time between those two edges. At 3 rad/s only ~5 ticks fall in 20 ms, so counting ticks per period would give ±20%; timing the edges removes that error.
 - A first-order low-pass filter with a 40 ms time constant smooths what is left.
@@ -99,7 +100,7 @@ duty = feedforward + KP · error + integral, with feedforward = FF_OFFSET + |tar
 - **Anti-windup:** the integral stops when the duty is saturated and while a motor waits for its wheel to stop before reversing, and is limited to ±`PID_I_MAX`.
 - **Never against the target:** the duty is kept on the side of the target (≥ 0 for a forward target). The encoder cannot read the direction, so the controller never brakes by reversing: a wheel that is too fast coasts down.
 - A target of 0 switches the motor off and clears the integral.
-- `control_set_target(left, right)` in rad/s is the entry point the micro-ROS layer will use; `control_set_duty()` stays for the open-loop tests.
+- `control_set_target(left, right)` in rad/s is the entry point the micro-ROS node uses; `control_set_duty()` stays for the open-loop tests.
 
 **Known limits (wheels lifted, 2026-10-11):**
 
@@ -109,7 +110,7 @@ duty = feedforward + KP · error + integral, with feedforward = FF_OFFSET + |tar
 
 ## Command watchdog
 
-In closed loop every `control_set_target()` call restarts a 0.5 s timer (`CMD_TIMEOUT_S`). When it runs out the control task itself sets both targets to 0 and the motors coast, so the wheels stop even if `loop()` or, later, the micro-ROS layer hangs. Open-loop duties (test key `5` only) are not watched.
+In closed loop every `control_set_target()` call restarts a 0.5 s timer (`CMD_TIMEOUT_S`). When it runs out the control task itself sets both targets to 0 and the motors coast, so the wheels stop even if `loop()` or the micro-ROS layer hangs. Open-loop duties (test key `5` only) are not watched.
 
 - On at boot (`CMD_WATCHDOG_ON_AT_BOOT`); key `w` toggles it for manual tests. With it on, keys `1`-`3` and `+`/`-` drive the wheels for 0.5 s only, and tests `6` and `7` refuse to start.
 - When it trips the firmware prints `watchdog: no target for 0.50 s, motors off`.
@@ -123,9 +124,9 @@ python3 tools/cmd_sender.py                       # 4 rad/s on both wheels, 20 H
 python3 tools/cmd_sender.py --left 2 --right -2 --rate 10
 ```
 
-Close `pio device monitor` first: only one program at a time can open the port.
+Close `pio device monitor` and stop `micro_ros_agent` first: only one program at a time can open the port.
 
-**Opening the port resets the ESP32**, even with DTR and RTS held released by the script: the firmware restarts in about a second with the motors off. The same will happen when the micro-ROS agent opens the port.
+**Opening the port resets the ESP32**, even with DTR and RTS held released by the script: the firmware restarts in about a second with the motors off. The micro-ROS agent does the same every time it starts.
 
 ## IMU
 
@@ -142,8 +143,39 @@ A BMI160 (purple GY-BMI160 board) on I2C, read by the control task once per peri
 - **Start-up.** The firmware looks for the chip on the configured pins, then on the pins swapped, at 0x68 and 0x69, and prints where it found it. After a soft reset it writes the configuration and **reads it back**: the IMU is used only if every register holds what was written. In suspend mode (right after the reset) the BMI160 ignores a register write that comes less than 450 µs after the previous one, so the driver waits 1 ms after every write.
 - **Gyro bias.** At boot and with key `c` the gyro is averaged for 2 s with the robot still and the mean is subtracted from then on. If any axis moves by more than 0.02 rad/s during those 2 s the calibration starts again.
 - **Missing IMU.** The I2C timeout is 2 ms, so an unplugged IMU does not stall the wheel control; the failed reads are counted.
-- **Orientation** is not computed here. The micro-ROS layer will publish raw `sensor_msgs/Imu` data (orientation marked as not provided) and `robot_localization` on the Pi will fuse the gyro rate with the wheel odometry.
+- **Orientation** is not computed here. The micro-ROS node publishes raw `sensor_msgs/Imu` data (orientation marked as not provided) and `robot_localization` on the Pi will fuse the gyro rate with the wheel odometry.
 - The accelerometer zero offset is not calibrated: at rest it reads ~0.5 m/s² on x and y and |a| 2% above g, within the BMI160 specification (zero-g offset up to ~40 mg).
+
+## micro-ROS node
+
+The `microros` build ([src/main_microros.cpp](src/main_microros.cpp)) turns the ESP32 into one ROS 2 node, `wheels_imu`, that talks to the Pi over the USB serial at 921600 baud (chosen in test T7). On the Pi, `micro_ros_agent` relays it to the rest of ROS 2. The control task, motors, encoders and IMU are the same code as in the debug build.
+
+| Topic | Direction | Type | Contents |
+|---|---|---|---|
+| `/wheel_states` | out, 50 Hz | `sensor_msgs/JointState` | `left_wheel_joint`, `right_wheel_joint`: position (rad) and velocity (rad/s) |
+| `/imu/data_raw` | out, 50 Hz | `sensor_msgs/Imu` | Angular rate and acceleration in `imu_link`, covariances from the still test; orientation not provided (`orientation_covariance[0] = -1`) |
+| `/wheel_cmd` | in | `sensor_msgs/JointState` | Velocity targets in rad/s, matched by joint name (or in the order left, right if there are no names) |
+
+- **QoS:** all three topics are best effort, as usual for sensor streams. A subscriber that asks for reliable delivery does not connect to them.
+- **Time stamps** come from the Pi clock: the node synchronises with the agent when it connects and every 10 s.
+- **Connection:** the node waits for the agent, creates its topics, pings the agent every 0.5 s and, if it stops answering, removes them, sets the targets to 0 and waits again. Without commands the watchdog stops the wheels after 0.5 s, as in the debug build.
+- **No IMU message** is published while the IMU is missing or the gyro calibration is running. A missing IMU is not reported otherwise yet: check with the debug build (key `?`).
+- **Nothing else may be written to the serial port** in this build: it carries the micro-ROS protocol.
+
+Run it (robot still when the agent starts: opening the port resets the ESP32, which calibrates the gyro):
+
+```bash
+~/.platformio/penv/bin/pio run -e microros -t upload --upload-port /dev/ttyUSB0
+source /opt/ros/jazzy/setup.bash && source ~/microros_ws/install/setup.bash
+ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600
+```
+
+`micro_ros_agent` is not in the Ubuntu packages: it is built in `~/microros_ws` with `micro_ros_setup` (jazzy branch). Then, in another terminal, for example:
+
+```bash
+ros2 topic hz /wheel_states
+ros2 topic pub -r 20 /wheel_cmd sensor_msgs/msg/JointState "{name: [left_wheel_joint, right_wheel_joint], velocity: [2.0, 2.0]}"
+```
 
 ## Build and flash
 
@@ -151,8 +183,9 @@ The board shows up on the Pi as `/dev/ttyUSB0`. Pass the port explicitly, so tha
 
 ```bash
 cd firmware_wheels_imu
-~/.platformio/penv/bin/pio run -t upload --upload-port /dev/ttyUSB0
+~/.platformio/penv/bin/pio run -e debug -t upload --upload-port /dev/ttyUSB0      # debug build (default)
 ~/.platformio/penv/bin/pio device monitor --port /dev/ttyUSB0   # Ctrl+C to exit
+~/.platformio/penv/bin/pio run -e microros -t upload --upload-port /dev/ttyUSB0   # micro-ROS build
 ```
 
 **Upload speed.** At the default 460800 baud the upload fails right after the stub starts ("No serial data received"). `platformio.ini` sets `upload_speed = 115200`, which works.
@@ -180,16 +213,17 @@ Single keys, no Enter needed:
 | `7` | Closed-loop step test: 4 rad/s from standstill for 2 s, prints 10-90% rise time, overshoot, steady error and PASS/FAIL |
 | `p` / `o` | KP × / ÷ 1.2 |
 | `i` / `u` | KI × / ÷ 1.2 |
+| `k` / `j` | Integral limit (`I_MAX`) × / ÷ 1.2 |
 | `w` | Watchdog on / off (on at boot) |
 | `m` | IMU line in the periodic output on / off |
 | `c` | Calibrate the gyro bias again (robot still) |
 | `8` | IMU still test: robot still for 5 s, prints mean acceleration, gyro mean and spread, longest control period and PASS/FAIL |
 | `9` | Rotation test: press, turn the robot, press again: prints the angle turned about z |
-| `?` | Prints the IMU detection and configuration read back, the calibration and the watchdog state |
+| `?` | Prints the IMU detection and configuration read back, the calibration, the watchdog state and the controller gains |
 | `q` | Pause / resume the periodic output, to copy lines |
 | `z` | Zero the displayed counters |
 
-Gains changed with `p`/`o`/`i`/`u` go back to the `config.h` values at reset.
+Gains changed with `p`/`o`/`i`/`u`/`k`/`j` go back to the `config.h` values at reset. Every change and every closed-loop step result prints the current gains.
 
 While a test runs the periodic output stops and only `4` (abort) is accepted.
 
@@ -201,6 +235,8 @@ While a test runs the periodic output stops and only `4` (abort) is accepted.
 
 **Controller step test** (wheels lifted): `w` (watchdog off), then `7` from standstill. Pass: rise ≤ 0.3 s, overshoot ≤ 10%, steady error within max(3%, 0.1 rad/s).
 
+**Controller step test on the ground:** the same `w` then `7`, with the robot on the floor and at least 1 m free in front: it drives forward ~0.3 m in 2 s and stops by itself; `4` stops it at any time. Same pass criteria.
+
 **Watchdog test** (wheels lifted): with the watchdog on, `1` must stop by itself after ~0.5 s; `tools/cmd_sender.py` must keep the wheels turning, and Ctrl+C on it must stop them within 0.5 s.
 
 **IMU test** (robot still, motors off): `8`. Pass: |a| within 4% of 9.81 m/s² and every gyro mean below 0.005 rad/s. Then `9`, turn the robot 90° to the left (anticlockwise seen from above), `9`: about +90°.
@@ -211,7 +247,7 @@ Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set th
 
 | File | Contents |
 |---|---|
-| [platformio.ini](platformio.ini) | Board, platform version, upload and monitor speed |
+| [platformio.ini](platformio.ini) | Board, platform version, upload and monitor speed; envs `debug` and `microros` (micro-ROS library pinned to a commit) |
 | [src/config.h](src/config.h) | Pins and constants |
 | [src/encoders.h](src/encoders.h), [src/encoders.cpp](src/encoders.cpp) | Encoder interrupts, consistent snapshot of counts and edge times |
 | [src/motors.h](src/motors.h), [src/motors.cpp](src/motors.cpp) | L298N driver: duty to PWM and direction, safe reversal |
@@ -223,4 +259,5 @@ Blocks 2 and 3 were tested with earlier builds where keys 1-3 and `+`/`-` set th
 | [tests/README.md](tests/README.md) | Test record |
 | [tests/sim/pid_sim.cpp](tests/sim/pid_sim.cpp) | PC simulation of the controller on a model of the wheel built from the tests |
 | [tests/serial_speed/](tests/serial_speed/) | Serial link speed test (separate firmware + Pi script), used to choose the micro-ROS baud rate |
-| [src/main.cpp](src/main.cpp) | Setup, test keys and their analysis, debug output |
+| [src/main_debug.cpp](src/main_debug.cpp) | Debug build: setup, test keys and their analysis, debug output |
+| [src/main_microros.cpp](src/main_microros.cpp) | micro-ROS build: node, topics, agent connection |

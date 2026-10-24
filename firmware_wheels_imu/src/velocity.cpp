@@ -15,6 +15,9 @@ constexpr float RAD_PER_TICK = 2.0f * PI / ENCODER_TICKS_PER_REV;
 constexpr float FILTER_ALPHA = CONTROL_PERIOD_S / (VELOCITY_FILTER_TAU_S + CONTROL_PERIOD_S);
 constexpr uint32_t ZERO_TIMEOUT_US = static_cast<uint32_t>(VELOCITY_ZERO_TIMEOUT_S * 1e6f);
 constexpr uint32_t PERIOD_US = static_cast<uint32_t>(CONTROL_PERIOD_S * 1e6f);
+// Below this the filtered speed of a stopped wheel is set to exactly 0, instead
+// of decaying for ever towards the smallest float (seen in test T8).
+constexpr float FILTER_ZERO_RAD_S = 1e-3f;
 
 struct Estimator {
   bool started;
@@ -50,6 +53,7 @@ void update(Estimator &e, const EncoderSnapshot &enc, uint32_t now_us) {
     }
   }
   e.v.filtered += FILTER_ALPHA * (e.v.raw - e.v.filtered);
+  if (e.v.raw == 0.0f && fabsf(e.v.filtered) < FILTER_ZERO_RAD_S) e.v.filtered = 0.0f;
 }
 
 }  // namespace
