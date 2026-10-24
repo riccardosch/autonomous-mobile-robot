@@ -5,6 +5,8 @@ ROS 2 Jazzy workspace that runs on the Raspberry Pi 5 (Ubuntu 24.04). Every node
 | Package | Language | Contents |
 |---|---|---|
 | [lidar_bridge](src/lidar_bridge/) | C++ | Reads the scans from the ESP32-C3 over USB and publishes `/scan` |
+| [agv_description](src/agv_description/) | Xacro, Python launch | Robot model: chassis, wheels, IMU and LiDAR frames |
+| [agv_odometry](src/agv_odometry/) | Python | Wheel odometry (`/odom`, TF) and `/cmd_vel` to wheel speed targets |
 
 ## Setup (once)
 
