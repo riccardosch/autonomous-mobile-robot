@@ -1,0 +1,5 @@
+kinect:
+  ros__parameters:
+    # Index of the Kinect on the USB bus (0 = first one found)
+    device_index: 0
+    rgb_frame_id: kinect_rgb_optical_frame
