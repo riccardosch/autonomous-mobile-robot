@@ -22,8 +22,33 @@ LiDAR YDS2MD-1 ──UART 115200──▶ ESP32-C3 SuperMini ──USB-C──�
 | L298N | Dual H-bridge for the two wheel motors | Motor supply 14.7 V, PWM from the ESP32 |
 | Roomba wheel modules ×2 | Drive wheels | Gear motor with a single-channel Hall encoder |
 | BMI160 | IMU (I2C) | Read by the wheel ESP32 at 50 Hz, in the centre of the robot |
+| Kinect v1 | RGB + depth camera | 12 V and USB through the Kinect adapter |
+| Battery pack | Main supply | 14.7 V |
+| Buck converters ×2 | 12 V (Kinect) and 5 V (Raspberry Pi) rails | Fed from the 14.7 V battery |
 
 ## Wiring
+
+### System overview
+
+![Complete system wiring: battery, buck converters, Raspberry Pi, Kinect, wheels module and LiDAR](docs/overview.jpeg)
+
+The whole robot runs from a single 14.7 V battery pack, which feeds three branches:
+
+| Branch | Supply | Load |
+|---|---|---|
+| Wheels module | 14.7 V directly | L298N motor supply (12V / GND terminals) |
+| Buck converter → 12 V | 14.7 V → 12 V | Kinect v1 through its power/USB adapter |
+| Buck converter → 5 V | 14.7 V → 5 V | Raspberry Pi, on the 5V and GND pins of the GPIO header |
+
+All grounds are shared. The data links all go to the Raspberry Pi's USB ports:
+
+| Device | Link to the Pi |
+|---|---|
+| Wheels module ESP32 (motors, encoders, IMU) | USB serial (micro-ROS) |
+| LiDAR ESP32-C3 SuperMini | USB serial |
+| Kinect v1 | USB, through the Kinect adapter |
+
+Details of each module are in the sections below.
 
 ### LiDAR
 
