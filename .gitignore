@@ -1,2 +1,6 @@
-# Personal learning examples (local only)
+# Personal, local only: learning examples and status notes
 learn/
+stato/
+
+# Python bytecode
+__pycache__/
