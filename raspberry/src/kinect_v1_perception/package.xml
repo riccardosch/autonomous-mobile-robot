@@ -3,7 +3,7 @@
 <package format="3">
   <name>kinect_v1_perception</name>
   <version>0.1.0</version>
-  <description>Perception nodes on top of the Kinect v1 driver: sound detection and direction of arrival from the 4-microphone array, shown on the LED, and sound type (YAMNet).</description>
+  <description>Perception nodes on top of the Kinect v1 driver: sound detection and direction of arrival from the 4-microphone array, shown on the LED, sound type (YAMNet), and object detection on the RGB image (YOLO26).</description>
   <maintainer email="riccardo.schiavo.1@studenti.unipd.it">Riccardo Schiavo</maintainer>
   <license>Apache-2.0</license>
 
@@ -11,7 +11,9 @@
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>audio_common_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>vision_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

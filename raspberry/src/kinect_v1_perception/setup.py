@@ -21,6 +21,7 @@ setup(
         'console_scripts': [
             'sound_localizer = kinect_v1_perception.sound_localizer:main',
             'sound_classifier = kinect_v1_perception.sound_classifier:main',
+            'yolo_detector = kinect_v1_perception.yolo_detector:main',
         ],
     },
 )
