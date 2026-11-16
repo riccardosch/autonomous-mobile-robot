@@ -7,6 +7,7 @@ ROS 2 Jazzy workspace that runs on the Raspberry Pi 5 (Ubuntu 24.04). Every node
 | [lidar_bridge](src/lidar_bridge/) | C++ | Reads the scans from the ESP32-C3 over USB and publishes `/scan` |
 | [agv_description](src/agv_description/) | Xacro, Python launch | Robot model: chassis, wheels, IMU and LiDAR frames |
 | [agv_odometry](src/agv_odometry/) | Python | Wheel odometry (`/odom`, TF) and `/cmd_vel` to wheel speed targets |
+| [agv_bringup](src/agv_bringup/) | Python launch, YAML | Starts the whole robot: micro-ROS agent, LiDAR, model, odometry and SLAM (`slam_toolbox`) |
 | [kinect_v1_perception](src/kinect_v1_perception/) | Python | On top of the Kinect v1 driver: sound detection, direction and type, LED, object detection (YOLO26). Needs its own Python environment, see its README |
 
 ## Setup (once)

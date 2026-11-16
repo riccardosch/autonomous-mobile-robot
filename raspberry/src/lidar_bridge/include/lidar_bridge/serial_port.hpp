@@ -26,7 +26,11 @@ public:
   // timeout). Throws std::runtime_error if the device is gone.
   size_t read(uint8_t * buf, size_t len, int timeout_ms);
 
+  // Hard-resets the ESP32 on the other end with a pulse on RTS.
+  void resetDevice();
+
 private:
+  void setModemLines(int lines, bool raised);
   int fd_ = -1;
 };
 

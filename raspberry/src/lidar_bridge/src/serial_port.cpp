@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -47,7 +48,26 @@ void SerialPort::open(const std::string & device)
     close();
     throw err;
   }
+  // Linux raises DTR and RTS when the port is opened. On the ESP32-C3 USB
+  // serial they drive the reset and boot pins: left raised, the board can stay
+  // silent. Release both, as the tools that work with it do.
+  setModemLines(TIOCM_DTR | TIOCM_RTS, false);
   tcflush(fd_, TCIFLUSH);  // drop whatever was queued before we started
+}
+
+void SerialPort::setModemLines(int lines, bool raised)
+{
+  ioctl(fd_, raised ? TIOCMBIS : TIOCMBIC, &lines);  // not fatal if unsupported
+}
+
+void SerialPort::resetDevice()
+{
+  // RTS raised with DTR released holds the ESP32 in reset; releasing RTS
+  // lets it boot into the firmware.
+  setModemLines(TIOCM_DTR, false);
+  setModemLines(TIOCM_RTS, true);
+  usleep(100 * 1000);
+  setModemLines(TIOCM_RTS, false);
 }
 
 void SerialPort::close()

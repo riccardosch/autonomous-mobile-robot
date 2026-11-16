@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>agv_bringup</name>
+  <version>0.1.0</version>
+  <description>Starts the whole robot: micro-ROS agent for the wheels, LiDAR, robot model, wheel odometry and SLAM.</description>
+  <maintainer email="riccardoschiavo003@gmail.com">riccardosch</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>agv_odometry</exec_depend>
+  <exec_depend>agv_description</exec_depend>
+  <exec_depend>lidar_bridge</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <!-- micro_ros_agent is built in ~/microros_ws (not a rosdep key) -->
+  <export><build_type>ament_cmake</build_type></export>
+</package>

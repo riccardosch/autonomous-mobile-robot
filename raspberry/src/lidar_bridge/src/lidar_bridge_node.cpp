@@ -61,6 +61,7 @@ private:
           serial_.open(port_);
           have_seq_ = false;
           skip_next_frame_ = true;
+          last_data_ = std::chrono::steady_clock::now();
           RCLCPP_INFO(get_logger(), "Opened %s", port_.c_str());
         } catch (const std::exception & e) {
           RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "%s, retrying", e.what());
@@ -70,8 +71,19 @@ private:
       }
       try {
         const size_t n = serial_.read(buf, sizeof(buf), 200);
+        const auto now_steady = std::chrono::steady_clock::now();
         if (n > 0) {
+          last_data_ = now_steady;
           parser_.feed(buf, n);
+        } else if (now_steady - last_data_ > kSilenceBeforeReset) {
+          // The LiDAR sends about 5 kB/s. A silent port means the ESP32-C3 is
+          // stuck (seen after a power-up): restart it and wait again.
+          RCLCPP_WARN(
+            get_logger(), "%s: no data for %.0f s, resetting the LiDAR ESP32",
+            port_.c_str(), std::chrono::duration<double>(kSilenceBeforeReset).count());
+          serial_.resetDevice();
+          last_data_ = now_steady;
+          skip_next_frame_ = true;
         }
       } catch (const std::exception & e) {
         RCLCPP_WARN(get_logger(), "%s: %s, reopening", port_.c_str(), e.what());
@@ -147,6 +159,8 @@ private:
   std::thread reader_;
   std::atomic<bool> running_{true};
 
+  static constexpr std::chrono::seconds kSilenceBeforeReset{3};
+  std::chrono::steady_clock::time_point last_data_;  // reader thread only
   bool skip_next_frame_ = true;
   bool have_seq_ = false;
   uint16_t last_seq_ = 0;
