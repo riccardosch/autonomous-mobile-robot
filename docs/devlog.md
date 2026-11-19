@@ -5,6 +5,25 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-11-20: Nav2 with the LiDAR
+
+### Done
+- `agv_bringup/launch/nav.launch.py` and `config/nav2.yaml`: the robot launch with SLAM plus four Nav2 servers (planner NavFn, controller Regulated Pure Pursuit, behaviors spin/back up/wait, BT navigator) and their lifecycle manager. Smoother, velocity smoother, collision monitor, waypoint follower and docking are not started: `agv_odometry` already ramps the wheel speeds.
+- Robot as a circle of radius 0.17 m, inflation 0.35 m, at most 0.15 m/s and 0.6 rad/s; minimum speeds kept near the lowest tested wheel speed (2 rad/s ≈ 0.07 m/s).
+- Checked first without hardware (fake TF): all plugins load and the servers become active.
+- On the robot: a goal on a free floor is reached; a box on the path makes the plan go around it; a box on the left shows up on the left of the costmap, so the scan is not mirrored (closes the check postponed on 2026-11-19).
+
+### Learned
+- Regulated Pure Pursuit only follows the path (and slows or stops near obstacles); going around a new obstacle comes from the planner replanning every second. MPPI would dodge by itself but simulates ~2000 trajectories 20 times a second, too much CPU next to the Kinect and YOLO.
+- The LiDAR sees only its own plane, about 13 cm above the floor. The robot drove into a lower obstacle; the wheels slipped, the odometry and then the SLAM lost the robot's position on the map, and all later goals failed until a restart.
+- `odom` appears only when the wheel ESP32 has opened its micro-ROS session, a few seconds after the launch; the transform time-outs before that are harmless.
+
+### Next steps
+- Kinect depth as a second costmap layer, so low obstacles are seen.
+- Save the map and navigate on it (localization instead of mapping), so a lost position can be recovered.
+
+---
+
 ## 2026-11-16 / 2026-11-19: Whole robot in one launch, first map, Kinect in the model
 
 ### Done

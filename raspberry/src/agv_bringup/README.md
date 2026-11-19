@@ -1,6 +1,6 @@
 # agv_bringup
 
-Starts the whole robot with one command: wheels, LiDAR, robot model, odometry and SLAM.
+Starts the whole robot with one command: wheels, LiDAR, robot model, odometry and SLAM; `nav.launch.py` adds Nav2 (see [Navigate](#navigate-nav2)).
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -43,6 +43,32 @@ Drive slowly, turn gently and come back over places already seen. Save the map:
 ros2 run nav2_map_server map_saver_cli -f ~/casa        # writes casa.pgm and casa.yaml
 ```
 
+## Navigate (Nav2)
+
+`nav.launch.py` starts everything in `robot.launch.py` (with SLAM) plus Nav2: you give a goal on the map and the robot plans a path and drives there, around obstacles.
+
+```bash
+ros2 launch agv_bringup nav.launch.py
+```
+
+Needs `sudo apt install ros-jazzy-navigation2`. Do **not** run `teleop_twist_keyboard` at the same time: both publish `/cmd_vel`.
+
+| Started | Does |
+|---|---|
+| `planner_server` (NavFn) | Path from the robot to the goal on the global costmap; replanned every second |
+| `controller_server` (Regulated Pure Pursuit) | Follows the path: `/cmd_vel`, at most 0.15 m/s and 0.6 rad/s; turns on the spot first, slows near obstacles |
+| `behavior_server` | Recoveries when stuck: spin, back up 30 cm, wait |
+| `bt_navigator` | The `/navigate_to_pose` action: plan → follow → recover |
+| `lifecycle_manager_navigation` | Configures and activates the four servers; prints `Managed nodes are active` |
+
+Costmaps ([config/nav2.yaml](config/nav2.yaml)): the robot is a circle of radius 0.17 m, obstacles are inflated by 0.35 m.
+- **global** (frame `map`): the SLAM map + obstacles from `/scan` + inflation. Unknown space can be planned through.
+- **local** (frame `odom`, 3 × 3 m around the robot): obstacles from `/scan` + inflation.
+
+Obstacles are seen only in the LiDAR plane, about 13 cm above the floor: lower or overhanging ones are invisible until the Kinect depth is added.
+
+In RViz on the PC, besides the displays for mapping: **Map** `/global_costmap/costmap` and `/local_costmap/costmap` (Color Scheme = costmap), **Path** `/plan`. Then **2D Goal Pose** in the toolbar: click and drag on the map for position and heading.
+
 ## Status
 
 Run on the robot on 2026-11-16: the whole launch works and builds a map of a room. The map closed correctly even when the wheels slipped on a carpet, because `slam_toolbox` corrects the odometry with the scans.
@@ -51,9 +77,14 @@ Checked on the robot:
 - Wheel directions: `i` moves the robot forward, `j` turns it left.
 - LiDAR zero: a box in front of the robot showed up behind it, so `lidar_bridge.yaml` now has `angle_offset_deg: -180.0`. After the change the map came out right.
 
-Not done yet (postponed on 2026-11-19: the map is right, so they are not blocking):
-- Wheel radius (0.035 m) and separation (0.235 m) are measured values and the odometry looks right in RViz. A check against a tape measure (1 m straight, one full turn on the spot) has not been recorded.
-- Left/right mirroring of the scan was judged only from the shape of the map (a mirrored scan would break it at every turn). It will be seen directly when Nav2 has to avoid a box.
+Nav2 run on the robot on 2026-11-20 (`nav.launch.py`):
+- A goal about 1 m ahead on a free floor: reached.
+- A box taller than the scan plane on the path: `/plan` went around it and the robot followed.
+- A box on the robot's left showed up on the left (+y) in the costmap: the scan is not mirrored.
+- An obstacle **lower than the LiDAR** was hit: the wheels kept turning, the odometry counted motion that did not happen, the SLAM lost its place on the map and every later goal failed. Restarting the launch (new map) was the way out. The Kinect depth is needed in the costmap.
+- At start-up `odom` exists only once the wheel ESP32 has opened its micro-ROS session (a few seconds: reset + gyro calibration). Until then Nav2 and SLAM print `Timed out waiting for transform` / `queue is full`; wait for `Managed nodes are active` before sending goals.
+
+Not done yet (postponed on 2026-11-19, not blocking while the map is right): a check of wheel radius (0.035 m) and separation (0.235 m) against a tape measure (1 m straight, one full turn on the spot).
 
 The Kinect is not started by this launch: its frame `kinect_link` is in the model, and the driver ([kinect_v1_perception](../kinect_v1_perception/)) attaches the camera frames to it.
 
