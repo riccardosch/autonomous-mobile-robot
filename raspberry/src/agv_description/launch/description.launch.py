@@ -14,7 +14,9 @@ import xacro
 # Empty overrides preserve the single set of defaults in the Xacro file.
 DIMENSIONS = ('body_diameter', 'wheel_separation', 'wheel_diameter',
               'wheel_width', 'body_height', 'body_ground_clearance', 'imu_top_offset',
-              'lidar_above_imu', 'lidar_x_offset')
+              'lidar_above_imu', 'lidar_x_offset', 'kinect_above_imu', 'kinect_x_offset')
+SIGNED = ('lidar_x_offset', 'kinect_x_offset')  # may be negative
+MAY_BE_ZERO = ('body_ground_clearance', 'imu_top_offset', 'lidar_above_imu', 'kinect_above_imu')
 
 
 def create_nodes(context):
@@ -23,8 +25,8 @@ def create_nodes(context):
         value = LaunchConfiguration(name).perform(context)
         if value:
             number = float(value)
-            if not math.isfinite(number) or (name != 'lidar_x_offset' and (number < 0 or (number == 0 and name not in ('body_ground_clearance', 'imu_top_offset', 'lidar_above_imu')))):
-                raise ValueError(f'{name} must be finite and positive (clearance and sensor offsets may be zero; lidar_x_offset is signed)')
+            if not math.isfinite(number) or (name not in SIGNED and (number < 0 or (number == 0 and name not in MAY_BE_ZERO))):
+                raise ValueError(f'{name} must be finite and positive (clearance and sensor heights may be zero; lidar_x_offset and kinect_x_offset are signed)')
             mappings[name] = value
     preview_text = LaunchConfiguration('preview').perform(context).lower()
     if preview_text not in ('true', 'false'):

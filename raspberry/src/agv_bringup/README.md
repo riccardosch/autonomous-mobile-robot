@@ -21,7 +21,7 @@ Keep the robot still while it starts: opening the serial port resets the wheel E
 |---|---|
 | `micro_ros_agent` | `/wheel_states`, `/imu/data_raw`, `/wheel_cmd` (wheel ESP32 with the `microros` firmware) |
 | [lidar_bridge](../lidar_bridge/) | `/scan` |
-| [agv_description](../agv_description/) | TF `base_footprint` → `base_link` → wheels, `imu_link`, `laser` |
+| [agv_description](../agv_description/) | TF `base_footprint` → `base_link` → wheels, `imu_link`, `laser`, `kinect_link` |
 | [agv_odometry](../agv_odometry/) | `/odom`, TF `odom` → `base_footprint`; `/cmd_vel` → `/wheel_cmd` |
 | `slam_toolbox` ([config/slam.yaml](config/slam.yaml)) | `/map`, TF `map` → `odom` |
 
@@ -51,9 +51,11 @@ Checked on the robot:
 - Wheel directions: `i` moves the robot forward, `j` turns it left.
 - LiDAR zero: a box in front of the robot showed up behind it, so `lidar_bridge.yaml` now has `angle_offset_deg: -180.0`. After the change the map came out right.
 
-Not done yet:
+Not done yet (postponed on 2026-11-19: the map is right, so they are not blocking):
 - Wheel radius (0.035 m) and separation (0.235 m) are measured values and the odometry looks right in RViz. A check against a tape measure (1 m straight, one full turn on the spot) has not been recorded.
-- Left/right mirroring of the scan was judged only from the shape of the map. A box on the robot's left must show up along the green (y) axis.
+- Left/right mirroring of the scan was judged only from the shape of the map (a mirrored scan would break it at every turn). It will be seen directly when Nav2 has to avoid a box.
+
+The Kinect is not started by this launch: its frame `kinect_link` is in the model, and the driver ([kinect_v1_perception](../kinect_v1_perception/)) attaches the camera frames to it.
 
 Faults to look for if the map goes wrong:
 

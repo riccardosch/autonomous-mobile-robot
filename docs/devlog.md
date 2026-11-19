@@ -5,6 +5,39 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-11-16 / 2026-11-19: Whole robot in one launch, first map, Kinect in the model
+
+### Done
+- `agv_bringup`: one launch starts the micro-ROS agent, `lidar_bridge`, the robot model, `agv_odometry` and `slam_toolbox`. Driven with `teleop_twist_keyboard`, it built the map of a room.
+- Checked on the robot: `i` drives forward, `j` turns left.
+- LiDAR zero: a box in front of the robot showed up behind it; `lidar_bridge.yaml` now has `angle_offset_deg: -180.0`, and the map came out right after the change.
+- Kinect v1 added to the model as `kinect_link`, 40 mm ahead of and 40 mm above the IMU (70 mm above `base_link`), no tilt. The driver attaches its optical frames to it, so depth and RGB are placed on the robot. Checked in RViz on 2026-11-19. The `agv_description` README was rewritten to match the Xacro (the previous one still said the IMU and LiDAR were not connected).
+
+### Learned
+- `slam_toolbox` corrects the odometry with the scans: the map closed even with the wheels slipping on a carpet.
+- Two copies of the launch fight over the serial ports: the LiDAR keeps reconnecting and the micro-ROS session is recreated over and over.
+
+### Postponed
+- Tape-measure check of the odometry (1 m straight, one turn on the spot) and a direct left/right check of the scan. Not blocking while the map is right; the second will show up when Nav2 avoids obstacles.
+
+### Next steps
+- Nav2 with the LiDAR costmap: goals from RViz, obstacle avoidance.
+- Then the Kinect depth as a second costmap layer (obstacles below or above the scan plane).
+
+---
+
+## 2026-11-12: Kinect v1 perception
+
+### Done
+- New package `kinect_v1_perception` on top of the Kinect driver (own repository, `~/kinect`): `sound_localizer` (sound detection, direction with SRP-PHAT over the 4 microphones, LED yellow on a sound), `sound_classifier` (YAMNet, 521 sound classes), `yolo_detector` (YOLO26n exported to NCNN, about 7 Hz on the Pi 5).
+- Python virtual environment `~/agv_venv` for the network libraries, with NumPy kept below 2 for ROS.
+
+### Learned
+- NCNN is about 3 times faster than PyTorch on the Pi 5 for YOLO26n (106 ms against 323 ms per image).
+- pip pulls setuptools ≥ 80 into the environment, which breaks `colcon build --symlink-install`; it must be removed after every install.
+
+---
+
 ## 2026-10-21: Wheel controller on the ground (T9)
 
 ### Done

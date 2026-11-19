@@ -82,10 +82,12 @@ Model, dimensions and launch instructions: [agv_description](raspberry/src/agv_d
 | Wheel command watchdog (block 5) | ✅ Wheels stop 0.5 s after the last command |
 | IMU on the wheel ESP32 (block 6) | ✅ Acceleration and angular rate in the robot frame, 90° turn read as 90.5° |
 | micro-ROS node on the wheel ESP32 (block 7) | ✅ Wheel states and IMU out, wheel speed targets in (test T8) |
-| Robot model (`agv_description`) | ✅ Chassis, wheel, IMU and LiDAR frames shown in RViz2 (static preview) |
+| Robot model (`agv_description`) | ✅ Chassis, wheel, IMU, LiDAR and Kinect frames |
 | Wheel PI transients retuned on the ground | ⏳ To do |
-| Wheel odometry (`agv_odometry`) | 🔧 Node written and checked with simulated wheel data; to test on the robot |
-| SLAM | ⏳ To do |
+| Wheel odometry (`agv_odometry`) | ✅ Works on the robot; tape-measure calibration postponed |
+| Robot launch + SLAM (`agv_bringup`, `slam_toolbox`) | ✅ 2D map of a room built on 2026-11-16 |
+| Kinect perception (`kinect_v1_perception`) | ✅ Sound direction, sound type (YAMNet), objects (YOLO26n) |
+| Navigation (Nav2) | ⏳ Next |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |
 | LiDAR bracket (Fusion) | 🔍 To check: tolerances and mounting |
 

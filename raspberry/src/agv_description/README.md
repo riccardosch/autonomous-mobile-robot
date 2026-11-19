@@ -1,36 +1,43 @@
 # agv_description
 
-Custom Xacro model for ROS 2 Jazzy, built from measurements on
-2026-10-18 (interpreted as centimetres and converted to SI units).
+Xacro model of the robot for ROS 2 Jazzy: chassis, wheels and the frames of the IMU, the LiDAR and the Kinect v1. It is a visual and kinematic model (TF tree), not a simulation: no collisions, inertias or motor interfaces.
 
-| Parameter | Default | Status |
+## Dimensions
+
+All values are in [urdf/agv.urdf.xacro](urdf/agv.urdf.xacro) and can be overridden at launch (`name:=value`, SI units).
+
+| Parameter | Default | Measured |
 |---|---|---|
-| `body_diameter` | 0.340 m |
-| `wheel_separation` | 0.235 m |
-| `wheel_diameter` | 0.070 m | 
-| `wheel_width` | 0.015 m | 
-| `body_height` | 0.080 m | Provisional, visual only |
-| `body_ground_clearance` | 0.015 m | Provisional, visual only |
+| `body_diameter` | 0.340 m | 2026-10-18 |
+| `wheel_separation` | 0.235 m | 2026-10-18, approximate |
+| `wheel_diameter` | 0.070 m | 2026-10-18 |
+| `wheel_width` | 0.015 m | 2026-10-18 |
+| `body_height` | 0.060 m | 2026-10-18, visual only |
+| `body_ground_clearance` | 0.020 m | 2026-10-18, visual only |
+| `imu_top_offset` | 0.015 m | IMU below the top of the body |
+| `lidar_above_imu`, `lidar_x_offset` | 0.065 m, −0.115 m | 2026-10-20, scan origin |
+| `kinect_above_imu`, `kinect_x_offset` | 0.040 m, +0.040 m | 2026-11-16, Kinect body centre |
 
-Dimensions are defined in `urdf/agv.urdf.xacro` and can be overridden at launch.
-This is a visual and kinematic model, not a dynamics simulation or a motor
-controller. Body collision geometry and inertias await measurements.
+Wheel radius and separation must match [agv_odometry's config](../agv_odometry/config/odometry.yaml). They have not been checked against a tape measure yet: the map from `slam_toolbox` corrects the odometry drift.
 
 ## Frames
 
-- `base_footprint`: ground projection of the wheel axle midpoint.
-- `base_link`: wheel axle midpoint, 35 mm above the floor at the default radius.
-- `left_wheel_link`, `right_wheel_link`: centres at y = +/-117.5 mm.
-- x is forward, y left, z up. Both wheel axes are +Y, so positive rotation
-  corresponds to forward rolling. Joint names match the ESP32:
-  `left_wheel_joint` and `right_wheel_joint`.
+x forward, y left, z up (REP 103). Positions relative to `base_link` with the defaults:
 
-The visual body is assumed centred above the axle midpoint; check this on the
-chassis. No IMU, LiDAR or caster transforms are invented: these will be added
-once mounting positions are measured. In particular, this package does not yet
-connect `imu_link` or `laser` to the robot. There is no `odom` transform yet.
+| Frame | Parent | Position (x, y, z) | Notes |
+|---|---|---|---|
+| `base_footprint` | `odom` (from [agv_odometry](../agv_odometry/)) | | Wheel axle midpoint projected on the floor |
+| `base_link` | `base_footprint` | 0, 0, 0.035 | Wheel axle midpoint |
+| `left_wheel_link`, `right_wheel_link` | `base_link` | 0, ±0.1175, 0 | Joints `left_wheel_joint`, `right_wheel_joint` (names used by the ESP32); axis +Y, positive = forward |
+| `imu_link` | `base_link` | 0, 0, 0.030 | Axes equal to the robot axes (the firmware already maps them) |
+| `laser` | `base_link` | −0.115, 0, 0.095 | Scan origin; the 180° zero offset is handled in `lidar_bridge`, not here |
+| `kinect_link` | `base_link` | +0.040, 0, 0.070 | Looking along +X, no tilt |
 
-## Install and build on the Pi
+The Kinect driver (`kinect_v1_bringup`, workspace `~/kinect`) publishes `kinect_depth_optical_frame`, `kinect_rgb_optical_frame` and `kinect_imu_frame` as children of `kinect_link`, so the camera data joins this tree without further changes.
+
+The body is drawn centred above the axle midpoint. Not modelled yet: the caster, collisions, inertias.
+
+## Build
 
 ```bash
 sudo apt install ros-jazzy-xacro ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publisher
@@ -40,37 +47,23 @@ colcon build --packages-select agv_description
 source install/setup.bash
 ```
 
-Preview without the ESP32 or agent (publishes stationary wheels):
+## Run
+
+Normally started by [agv_bringup](../agv_bringup/). Alone:
 
 ```bash
-ros2 launch agv_description description.launch.py preview:=true
+ros2 launch agv_description description.launch.py preview:=true   # static wheels, no ESP32 needed
+ros2 launch agv_description description.launch.py                 # wheels from /wheel_states
 ```
 
-Or, with the agent running and the ESP32 publishing `/wheel_states`:
+Run one mode at a time. Preview publishes on a separate joint-state topic and never sends motor commands.
 
-```bash
-ros2 launch agv_description description.launch.py
-```
+Check a frame from the terminal: `ros2 run tf2_ros tf2_echo base_link kinect_link`.
 
-Run only one mode at a time. Preview uses a separate joint-state topic and
-never sends motor commands. Live mode remaps robot_state_publisher's input to
-`/wheel_states`; wheel TF becomes available when feedback arrives.
+In RViz2 on the PC: *Fixed Frame* = `base_footprint`, **RobotModel** with Description Topic `/robot_description` (Durability = Transient Local if RViz starts after the launch) and **TF** to see the axes (red x, green y, blue z).
 
-On the PC, open RViz with the same ROS domain and network setup as the LiDAR.
-Set Fixed Frame to `base_footprint`, add RobotModel using `/robot_description`,
-and add TF to inspect the axes. Set the RobotModel description subscription
-to Transient Local if the model does not appear after starting RViz late.
+## Status
 
-Example override after measuring the body height:
-
-```bash
-ros2 launch agv_description description.launch.py preview:=true body_height:=0.090
-```
-
-## Next measurements and integration
-
-Measure body height, ground clearance, axle offset from the body centre, and
-sensor positions relative to `base_link`. For the LiDAR use the scan origin;
-for the IMU account for the firmware's existing axis mapping. Then add sensor
-TF and the ros2_control interface. The controller must use the same wheel
-radius and separation, with feedback timeout and stop-on-deactivation handling.
+- 2026-10-18: model and TF tree checked in RViz2.
+- 2026-11-16: used in the full robot launch; the map built with `slam_toolbox` came out right with the LiDAR frame.
+- 2026-11-19: `kinect_link` checked in RViz: 40 mm ahead and 70 mm above `base_link`, x forward.

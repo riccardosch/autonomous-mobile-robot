@@ -11,6 +11,13 @@
   <!-- Scan origin relative to the IMU, measured on 2026-10-20: 65 mm above and 115 mm behind (-X), on the centreline. -->
   <xacro:arg name="lidar_above_imu" default="0.065"/>
   <xacro:arg name="lidar_x_offset" default="-0.115"/>
+  <!-- Kinect v1 body centre relative to the IMU, measured on 2026-11-16: 40 mm ahead (+X) and 40 mm above,
+       on the centreline, looking straight ahead (no tilt). The driver (kinect_v1_bringup) publishes the
+       optical frames as children of kinect_link. -->
+  <xacro:arg name="kinect_above_imu" default="0.040"/>
+  <xacro:arg name="kinect_x_offset" default="0.040"/>
+  <xacro:property name="kinect_up" value="$(arg kinect_above_imu)"/>
+  <xacro:property name="kinect_x" value="$(arg kinect_x_offset)"/>
   <xacro:property name="lidar_up" value="$(arg lidar_above_imu)"/>
   <xacro:property name="lidar_x" value="$(arg lidar_x_offset)"/>
   <xacro:property name="imu_offset" value="$(arg imu_top_offset)"/>
@@ -66,6 +73,12 @@
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/><child link="laser"/>
     <origin xyz="${lidar_x} 0 ${clearance + body_h - imu_offset + lidar_up - wheel_d / 2}" rpy="0 0 0"/>
+  </joint>
+  <!-- Kinect v1, looking along +X. -->
+  <link name="kinect_link"/>
+  <joint name="kinect_joint" type="fixed">
+    <parent link="base_link"/><child link="kinect_link"/>
+    <origin xyz="${kinect_x} 0 ${clearance + body_h - imu_offset + kinect_up - wheel_d / 2}" rpy="0 0 0"/>
   </joint>
   <!-- Caster, collisions and inertias await measurements.
        No simulation plugins or motor command interfaces in this model. -->
