@@ -2,7 +2,7 @@
 # the LiDAR 130 mm and the Kinect ~125 mm. The Kinect is only needed below the
 # LiDAR plane (~13 cm): above it the LiDAR sees obstacles better and farther.
 # The node runs as /kinect/depth_obstacles: a plain `depth_obstacles:` key would not
-# match it and every value here would be silently ignored (it was, until 2026-11-21).
+# match it, and every value here would be silently ignored.
 /**:
   ros__parameters:
     target_frame: base_footprint

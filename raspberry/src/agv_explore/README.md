@@ -18,17 +18,35 @@ It starts [agv_bringup/nav.launch.py](../agv_bringup/launch/nav.launch.py) (robo
 
 ## How it works
 
-[frontiers.cpp](src/frontiers.cpp) (no ROS, tested in [test/](test/test_frontiers.cpp)) and [explorer_node.cpp](src/explorer_node.cpp):
+Once a second, on the `/map` from `slam_toolbox` and the Nav2 global costmap:
 
-1. Every second, on the `/map` from `slam_toolbox`, find the **frontier cells**: free cells with an unknown neighbour. Group the touching ones into frontiers; drop those shorter than 40 cm.
-2. Pick one: `score = 0.3 × length [m] − distance [m] − 0.5 × turn [rad]`, where *turn* is the angle between the robot heading and the frontier. Close frontiers ahead of the robot win, so it sweeps the house instead of jumping around.
-3. The goal is not the frontier cell itself (often right against a wall): the robot stops **0.8 m in front of the frontier, facing it** (the frontier's normal points into the unknown), so the Kinect (0.5-1.5 m) looks straight into a gap before the robot drives in. The spot must be free on the map and comfortable on the global costmap (cost ≤ 60/100); if there is none there, any such spot within 0.8 m of the frontier; if none, the frontier is blacklisted.
-4. Send it to Nav2 (`navigate_to_pose`). If the frontier is seen from afar on the way, the next goal is sent at once and **replaces** the running one inside Nav2, without stopping.
-5. On arrival it goes on at once to the next frontier; 3 s later (the map is updated every 2 s) the one it arrived at is checked. Still open after looking at it from the standoff (something hides it): next time the robot **drives right up to it**. Still open even up close: the LiDAR cannot see into it (glass, a gap under furniture), so it is **blacklisted**.
-6. A frontier that Nav2 cannot reach (or with no room for the robot, or taking more than 2 minutes) is **retried**: it rests for 20 s while the robot goes elsewhere (meanwhile old costmap marks fade and the map improves), up to 3 attempts, then it is blacklisted. Blacklisted points ban frontiers within 0.5 m. While a frontier waits for another attempt the exploration is not declared finished.
-7. No frontier left for 5 s in a row → save the map in `~/maps/<name>`: `.pgm` + `.yaml` written by the explorer from its own copy of `/map` (same format as Nav2's `map_saver`; `slam_toolbox/save_map` failed once when `/map` took more than 2 s to reach `map_saver`), and `.posegraph` + `.data` via `slam_toolbox/serialize_map` (to continue the map or localize on it later).
+1. **Frontiers**: free cells with an unknown neighbour, grouped when they touch; those shorter than 40 cm are dropped. Each has a direction pointing into the unknown.
+2. **Choice**: `score = 0.3 × length [m] − distance [m] − 0.5 × turn [rad]` (*turn*: angle between the robot heading and the frontier). Close frontiers ahead of the robot win, so it sweeps the house instead of jumping around.
+3. **Goal spot**: the robot stops **0.8 m in front of the frontier, facing it**, so the Kinect (0.5-1.5 m) looks into a gap before the robot drives in. The spot must be free on the map and at least ~4 cm beyond the robot's radius on the global costmap (cost ≤ 85/100). If there is no such spot in front, or if the frontier must be approached up close (step 5), a spot near the frontier itself.
+4. **Driving**: the goal goes to Nav2 (`navigate_to_pose`). If the frontier is seen from afar on the way, the next goal replaces the running one inside Nav2, without stopping.
+5. **Arrival**: the robot goes on at once; 3 s later (the map updates every 2 s) the frontier is judged. Explored: forgotten. Still open after looking at it from 0.8 m (something hides it): next time the robot **drives up to it**. Still open even up close (glass, a gap under furniture): **blacklisted**.
+6. **Failures** (Nav2 aborts, no room near the frontier, more than 2 minutes): the frontier rests for 20 s while the robot goes elsewhere (old costmap marks fade, the map improves), up to 3 attempts, then it is blacklisted. Two frontier points within 0.5 m count as the same frontier.
+7. **End**: no frontier left for 5 s in a row, and none waiting for another attempt → the map is saved in `~/maps/<name>`: `.pgm` + `.yaml` (same format as Nav2's `map_saver`, written by the explorer from its copy of `/map`) and `.posegraph` + `.data` from `slam_toolbox/serialize_map` (to continue the map or localize on it later). Also after `time_limit_min`.
 
-Parameters: [config/explorer.yaml](config/explorer.yaml). What the explorer decides is in its log lines (`explorer` in the launch terminal, also in `~/.ros/log/explorer_*.log`).
+The explorer's decisions are in its log lines (launch terminal, and `~/.ros/log/explorer_*.log`). Parameters: [config/explorer.yaml](config/explorer.yaml).
+
+## Code
+
+The node only talks to ROS; the decisions are in ROS-free modules with unit tests ([test/](test/)):
+
+| File | Does |
+|---|---|
+| [grid.hpp](include/agv_explore/grid.hpp) | `Grid` (an `OccupancyGrid` without ROS), `Point`, `Robot` |
+| [frontiers.hpp](include/agv_explore/frontiers.hpp) | find frontiers; is a frontier still open |
+| [goal_selector.hpp](include/agv_explore/goal_selector.hpp) | score, order, goal spot in front of or near the frontier |
+| [frontier_memory.hpp](include/agv_explore/frontier_memory.hpp) | failures and retries, blacklist, frontiers to approach up close, arrivals waiting to be judged |
+| [map_file.hpp](include/agv_explore/map_file.hpp) | `.pgm` + `.yaml` map files |
+| [explorer_node.cpp](src/explorer_node.cpp) | parameters, topics, Nav2 action, TF, the state machine (`WaitingForData → Idle ⇄ Driving → Finished`, described at the top of the file) |
+
+```bash
+colcon build --packages-select agv_explore
+colcon test --packages-select agv_explore && colcon test-result --verbose
+```
 
 ## Simulation
 
@@ -40,14 +58,14 @@ src/agv_explore/test/sim/run_sim.sh                 # explorer decisions + share
 FAIL_FIRST=2 src/agv_explore/test/sim/run_sim.sh    # first two goals fail: retries
 ```
 
-It checks the explorer's logic (frontiers, choice, blacklist, retries, end, map file), not driving: the fake robot jumps to each goal.
+It checks the explorer's logic (frontiers, choice, memory, end, map file), not driving: the fake robot jumps to each goal. Expected: 17 goals, 100% of the house seen, nothing blacklisted (19 goals with `FAIL_FIRST=2`).
 
 ## Limits
 
 - The map comes from the LiDAR only (scan plane ~13 cm). Low obstacles seen by the Kinect are avoided by Nav2 but are not part of the saved map.
 - Closed doors end the exploration there: open the doors you want mapped.
-- Gaps narrower than the robot (34 cm) plus a few cm cannot be passed.
+- If the robot hits something and the wheels slip, the SLAM can lose its place and the map becomes inconsistent; there is no relocalization yet.
 
 ## Status
 
-- 2026-11-21: unit tests pass. Checked on the Pi against a simulated house (10 × 8 m, two rooms and two doors; a fake Nav2 moves the robot to each goal and the map is revealed by ray casting within 2.5 m): 20 goals, 100% of the free space seen in 1.8 min, map saved. First run on the robot (2026-11-21, `prova1`): it explored and saved the map in 4 min, but slowly, with stops between goals, 4 of 10 goals that Nav2 could not plan to (goal on the frontier cell, against a wall) and passages refused because of Kinect marks that never faded. Changed the same day: safe goal spot, goal replacement without stopping, heading-aware choice, Kinect layer that forgets, smaller margins, 0.2 m/s. Simulation after the changes: 20 goals, 100% seen in 0.8 min (was 1.8). Second robot run (`prova2`): the robot stopped with `collision ahead` 5-7 cm from chair legs and could not recover (spin failed). Then (block 3c): frontal approach, recovery that backs up and looks again, two radii (planner optimistic, local costmap real), Kinect marks kept until seen empty. Simulation: 17 goals, none blacklisted, 100% in 0.7 min. `prova3`: room explored in 2 min. Next run: stopped at an open door — Nav2 could not plan to it once (the Kinect was still on the old parameters, see agv_perception_depth) and the explorer blacklisted it at once, then `map_saver` failed. Now: retries, own map writer.
+Unit tests and the simulation pass. On the robot it has explored and saved single rooms by itself. History of the robot runs and of the changes in [docs/devlog.md](../../../docs/devlog.md).

@@ -12,6 +12,7 @@ FAIL_FIRST=n makes the first n goals fail, to test the explorer's retries.
 """
 import math
 import os
+import signal
 import sys
 import time
 
@@ -127,7 +128,9 @@ def main():
     ex = MultiThreadedExecutor()
     ex.add_node(w)
     end = time.time() + float(sys.argv[1] if len(sys.argv) > 1 else 200)
-    while time.time() < end:
+    stop = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(True))   # run_sim.sh ends us with kill
+    while time.time() < end and not stop:
         ex.spin_once(timeout_sec=0.1)
     free = TRUE == 0
     print('free space seen: %.1f%%, goals %d, replaced %d'

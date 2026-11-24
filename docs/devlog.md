@@ -5,6 +5,19 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-11-24: Explorer cleanup (no change in behaviour)
+
+### Done
+- `agv_explore` split by responsibility. The node (`explorer_node.cpp`) only talks to ROS and runs an explicit state machine (`WaitingForData → Idle ⇄ Driving → Finished`, transitions in one place). The decisions moved to ROS-free modules: `frontiers` (find), `goal_selector` (score, order, goal spot), `frontier_memory` (one class for failures and retries, blacklist, up-close approaches and arrivals, with time passed in), `map_file` (`.pgm`/`.yaml`).
+- Two numbers that were in the code are parameters now: `seen_on_way_after_s` (3 s) and `standoff_search_dist` (0.4 m). The parameter file key is `/**:`.
+- Unit tests from 8 to 20: the memory, the goal choice and the map file are now tested without ROS. The simulation gives the same result as before the split (17 goals, 100% of the house, nothing blacklisted; with two forced failures, two retries then through).
+- READMEs of `agv_explore`, `agv_bringup`, `agv_perception_depth` and the comments in `nav2.yaml` rewritten to describe the current state only; values that had gone stale were fixed (goal cost 85, not 60; `collision ahead` horizon 1.0 s, not 1.5 s; `nav.launch.py` does start the Kinect). The history stays in this log.
+
+### Learned
+- Fixing on the robot one symptom at a time had left five lists with overlapping meanings and state changes spread over four functions; each fix risked breaking another. Writing the rules down as one tested class showed them in a few lines.
+
+---
+
 ## 2026-11-20 / 2026-11-21: Kinect depth in the costmaps, autonomous exploration
 
 ### Done

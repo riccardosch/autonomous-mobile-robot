@@ -41,12 +41,12 @@ controller_server:
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.3      # AGV: slow robot (was 0.5)
-      movement_time_allowance: 15.0      # AGV (was 10.0)
+      required_movement_radius: 0.3      # AGV: slow robot (Nav2 default 0.5)
+      movement_time_allowance: 15.0      # AGV (Nav2 default 10.0)
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.15            # AGV (was 0.25)
+      xy_goal_tolerance: 0.15            # AGV (Nav2 default 0.25)
       yaw_goal_tolerance: 0.25
 
     # AGV: Regulated Pure Pursuit instead of MPPI. It follows the planned path
@@ -56,8 +56,8 @@ controller_server:
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.20           # m/s, wheels at ~5.7 rad/s (max 8)
-      lookahead_dist: 0.3                # AGV 2026-11-21: was 0.4; a closer aim cuts corners less
-      min_lookahead_dist: 0.2            # (was 0.25)
+      lookahead_dist: 0.3                # AGV: a close aim cuts corners less
+      min_lookahead_dist: 0.2            # AGV
       max_lookahead_dist: 0.7
       lookahead_time: 1.5
       use_velocity_scaled_lookahead_dist: false
@@ -66,17 +66,18 @@ controller_server:
       min_approach_linear_velocity: 0.07 # do not crawl below the tested wheel speeds
       approach_velocity_scaling_dist: 0.4
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 1.0   # AGV (was 1.5): slow near obstacles = short check, it can creep past
+      max_allowed_time_to_collision_up_to_carrot: 1.0   # AGV: slow near obstacles = short check, it can creep past
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.07   # slowest, in tight places
-      cost_scaling_dist: 0.4             # AGV: start slowing down 40 cm from obstacles (was 0.3)
+      cost_scaling_dist: 0.4             # AGV: start slowing down 40 cm from obstacles
       cost_scaling_gain: 1.0
       inflation_cost_scaling_factor: 4.0 # must equal the costmaps' cost_scaling_factor
       use_rotate_to_heading: true        # turn on the spot first: the robot can, a car cannot
       rotate_to_heading_min_angle: 0.6
-      max_angular_accel: 20.0            # AGV: was 2.0. RPP ramps from the *measured* turn rate: from standstill it asked 0.1 rad/s, too little to move the wheels (0.34 rad/s each), so it never got going. agv_odometry already ramps the wheels.
+      max_angular_accel: 20.0            # AGV: high on purpose. RPP ramps from the *measured* turn rate, so from
+                                         # standstill a low limit asks too little to move the wheels; agv_odometry ramps them.
       allow_reversing: false
       use_fixed_curvature_lookahead: false
       interpolate_curvature_after_goal: false
@@ -94,7 +95,7 @@ local_costmap:
       resolution: 0.025                  # AGV: 2.5 cm cells near the robot, for tight passages
       # AGV: the real size, 2.5 cm cells, LiDAR + Kinect: this costmap decides whether
       # the robot really fits (the controller stops before touching).
-      robot_radius: 0.17                 # AGV (was 0.22)
+      robot_radius: 0.17                 # AGV (Nav2 default 0.22)
       footprint_padding: 0.01
       plugins: ["obstacle_layer", "depth_layer", "inflation_layer"]
       obstacle_layer:                    # LiDAR: marks what it hits, clears what it sees through
@@ -176,8 +177,8 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      # AGV: the real radius, as in the local costmap. (An optimistic 0.15 m, tried on
-      # 2026-11-21, made the planner brush obstacles that the controller then refused.)
+      # AGV: the real radius, as in the local costmap: a smaller one makes the planner
+      # brush obstacles, and the controller then refuses the path.
       robot_radius: 0.17
       footprint_padding: 0.01
       resolution: 0.05
@@ -265,10 +266,9 @@ planner_server:
     expected_planner_frequency: 20.0
     planner_plugins: ["GridBased"]
     costmap_update_timeout: 1.0
-    # AGV 2026-11-21: Smac 2D instead of NavFn. NavFn paths brushed chair legs
-    # (1-2 cm from the robot outline) and the controller refused them; Smac 2D
-    # adds cost_travel_multiplier * cell cost to every step, so the path keeps
-    # to the middle of passages and still goes through narrow ones.
+    # AGV: Smac 2D (Nav2 default NavFn, whose paths brush obstacles): it adds
+    # cost_travel_multiplier * cell cost to every step, so the path keeps to the
+    # middle of passages and still goes through narrow ones.
     GridBased:
       plugin: "nav2_smac_planner::SmacPlanner2D"
       tolerance: 0.5                     # m, a goal in an obstacle may be reached this close
@@ -305,9 +305,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.8              # AGV (was 1.0)
+    max_rotational_vel: 0.8              # AGV (Nav2 default 1.0)
     min_rotational_vel: 0.4
-    rotational_acc_lim: 2.0              # AGV (was 3.2)
+    rotational_acc_lim: 2.0              # AGV (Nav2 default 3.2)
 
 lifecycle_manager_navigation:
   ros__parameters:

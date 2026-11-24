@@ -5,13 +5,6 @@
 
 namespace agv_explore {
 
-int Grid::index(double wx, double wy) const {
-  const int c = static_cast<int>(std::floor((wx - origin_x) / resolution));
-  const int r = static_cast<int>(std::floor((wy - origin_y) / resolution));
-  if (c < 0 || r < 0 || c >= width || r >= height) return -1;
-  return r * width + c;
-}
-
 namespace {
 // Free cell with an unknown cell among its 4 neighbours.
 bool is_frontier_cell(const Grid &g, int i) {
@@ -97,47 +90,6 @@ bool still_frontier(const Grid &g, double x, double y) {
       if (is_frontier_cell(g, rr * g.width + cc)) return true;
     }
   return false;
-}
-
-bool safe_goal(const Grid &map, const Grid &costmap, double x, double y, double max_dist,
-               int max_cost, Point &out) {
-  bool found = false;
-  double best = max_dist;
-  const int reach = static_cast<int>(std::ceil(max_dist / costmap.resolution));
-  const int centre = costmap.index(x, y);
-  if (centre < 0) return false;
-  const int c0 = centre % costmap.width, r0 = centre / costmap.width;
-  for (int r = r0 - reach; r <= r0 + reach; ++r)
-    for (int c = c0 - reach; c <= c0 + reach; ++c) {
-      if (c < 0 || r < 0 || c >= costmap.width || r >= costmap.height) continue;
-      const int i = r * costmap.width + c;
-      const int8_t cost = costmap.data[i];
-      if (cost < 0 || cost > max_cost) continue;
-      const double cx = costmap.x(i), cy = costmap.y(i);
-      const int m = map.index(cx, cy);
-      if (m < 0 || !map.free(m)) continue;
-      const double d = std::hypot(cx - x, cy - y);
-      if (d <= best) { best = d; out = {cx, cy}; found = true; }
-    }
-  return found;
-}
-
-int pick_frontier(const std::vector<Frontier> &f, const std::vector<Point> &blacklist,
-                  double blacklist_radius, double resolution, double size_weight,
-                  const Robot &robot, double turn_weight) {
-  int best = -1;
-  double best_score = -std::numeric_limits<double>::max();
-  for (size_t k = 0; k < f.size(); ++k) {
-    bool banned = false;
-    for (const auto &b : blacklist)
-      if (std::hypot(f[k].goal_x - b.x, f[k].goal_y - b.y) < blacklist_radius) { banned = true; break; }
-    if (banned) continue;
-    double turn = std::atan2(f[k].goal_y - robot.y, f[k].goal_x - robot.x) - robot.yaw;
-    turn = std::fabs(std::atan2(std::sin(turn), std::cos(turn)));  // wrap to [0, pi]
-    const double score = size_weight * f[k].size * resolution - f[k].distance - turn_weight * turn;
-    if (score > best_score) { best_score = score; best = static_cast<int>(k); }
-  }
-  return best;
 }
 
 }  // namespace agv_explore

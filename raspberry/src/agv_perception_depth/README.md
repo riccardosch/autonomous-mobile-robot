@@ -45,8 +45,8 @@ Normally started by `ros2 launch agv_bringup nav.launch.py` (argument `kinect:=t
 ros2 launch agv_perception_depth depth_obstacles.launch.py
 ```
 
-Why only up to 15 cm and 1.5 m (changed on 2026-11-21 from 25 cm and 2.5 m): the robot is ~15 cm high and the LiDAR sees everything at its height (~13 cm) better and farther. Marking walls and furniture again from the Kinect, a few cm off at 2 m, made them thicker and closed passages: 63% of the free space was forbidden to the robot centre during the first exploration.
+Why only up to 15 cm and 1.5 m: the LiDAR sees everything at its own height (~13 cm) better and farther, and Kinect marks of the same walls and furniture, a few cm off beyond 1.5 m, make them thicker and close passages. The Kinect is there for what the LiDAR cannot see. `max_height` assumes the robot is ~15 cm high (to be measured).
 
 ## Status
 
-- 2026-11-20: unit tests pass; checked on the Pi with a synthetic depth image (a wall 1 m ahead, the floor below): 4640 obstacle and 3200 floor points as computed by hand, and the wall shows up in the Nav2 local costmap at x ≈ 1.04 m. Not yet run with the real Kinect.
+Unit tests pass. Checked on the Pi with a synthetic depth image (the computed points match a hand calculation, and the wall appears in the Nav2 costmap), and on the robot: floor flat (pitch error ~0.1°), real objects marked. Not checked yet: thin, dark chair legs, which the robot hit during an exploration (the Kinect v1 often returns no depth on black, shiny surfaces; to be measured). History in [docs/devlog.md](../../../docs/devlog.md).

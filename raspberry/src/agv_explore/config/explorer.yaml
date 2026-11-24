@@ -1,4 +1,4 @@
-explorer:
+/**:   # any node name or namespace (a plain `explorer:` would not match a namespaced node)
   ros__parameters:
     min_frontier_size: 8     # cells (5 cm): frontiers shorter than 40 cm are ignored
     size_weight: 0.3         # score = size_weight * length [m] - distance [m] - turn_weight * turn [rad]
@@ -6,10 +6,12 @@ explorer:
     goal_max_cost: 85        # goal spot cost on the global costmap (0..100; 99 = touching); 85 ~ 4 cm beyond the radius
     goal_search_dist: 0.8    # m: how far from the frontier the goal spot may be
     standoff: 0.8            # m: stop this far in front of the frontier, facing it (Kinect sees 0.5-1.5 m)
-    blacklist_radius: 0.5    # m: a failed goal also bans frontiers this close to it
+    standoff_search_dist: 0.4  # m: how far from that point the goal spot may be
+    blacklist_radius: 0.5    # m: two frontier points this close are the same frontier
     max_attempts: 3          # a frontier Nav2 cannot reach is retried, then blacklisted
     retry_after_s: 20.0      # wait before trying a failed frontier again (old marks fade meanwhile)
-    goal_timeout_s: 120.0    # a single goal taking longer is given up and blacklisted
+    goal_timeout_s: 120.0    # a single goal taking longer counts as a failed attempt
+    seen_on_way_after_s: 3.0 # after this, a frontier seen while driving there makes the explorer move on
     time_limit_min: 20.0     # whole exploration
     empty_checks: 5          # seconds with no frontier before declaring the house done
     settle_s: 3.0            # wait after each arrival: slam_toolbox updates the map every 2 s
