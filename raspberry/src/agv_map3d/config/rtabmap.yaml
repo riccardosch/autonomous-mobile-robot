@@ -1,0 +1,34 @@
+# RTAB-Map as the 3D mapper (rtabmap 0.23, ROS 2 Jazzy). Values that differ from
+# RTAB-Map's defaults are commented. Its strings are RTAB-Map's own parameters.
+/**:
+  ros__parameters:
+    # --- inputs ---
+    subscribe_rgbd: true              # colour + aligned depth, paired by rgbd_sync
+    subscribe_depth: false
+    subscribe_rgb: false
+    subscribe_scan: true              # /scan from lidar_bridge
+    approx_sync: true                 # images (30 Hz) and scans (8 Hz) are not taken together
+    qos_image: 2                      # best effort, like the Kinect driver
+    qos_scan: 2                       # best effort, like lidar_bridge
+    wait_for_transform: 0.2
+
+    # --- frames ---
+    # The robot pose comes from the 2D SLAM (TF map -> base_footprint), already free of
+    # drift, so RTAB-Map uses `map` as its odometry frame and publishes only map3d -> map:
+    # the 3D model stays aligned with the 2D map and nobody else publishes map -> odom.
+    frame_id: base_footprint
+    odom_frame_id: map
+    map_frame_id: map3d
+    publish_tf: true
+
+    # --- RTAB-Map ---
+    Rtabmap/DetectionRate: "1"        # one new view per second at most
+    RGBD/LinearUpdate: "0.1"          # m, a new view after this much motion
+    RGBD/AngularUpdate: "0.1"         # rad
+    Reg/Strategy: "0"                 # loop closures from image features (the 2D scan is sparse)
+    Reg/Force3DoF: "true"             # ground robot: x, y, yaw only
+    Kp/MaxFeatures: "400"             # default 500: less CPU on the Pi
+    Vis/MinInliers: "15"              # default 20
+    Grid/Sensor: "1"                  # grid and cloud from the depth image
+    Grid/RangeMax: "3.0"              # m, default 5: Kinect v1 depth is poor beyond ~3 m
+    Grid/CellSize: "0.05"

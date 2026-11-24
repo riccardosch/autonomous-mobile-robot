@@ -5,6 +5,23 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-11-24 / 2026-11-25: First 3D map (block 4a)
+
+### Done
+- New package `agv_map3d`: `rtabmap.launch.py` starts the Kinect driver in `registered` mode (depth aligned to colour), `rgbd_sync` and RTAB-Map in the `/rtabmap` namespace; database `~/maps/<name>.db`.
+- RTAB-Map takes the robot pose from the 2D SLAM (`odom_frame_id: map`) and publishes only `map3d → map`, so `slam_toolbox` stays the only owner of `map → odom` and the 3D model is aligned with the 2D map.
+- Dry run with synthetic RGB-D data, then a 9-minute hand-driven run in a room: 501 views, 20 loop closures (4 global, 16 local), ~70-80 ms per view. `rtabmap-export` gave a 445k-point cloud with straight, single walls.
+
+### Learned
+- In the dark the Kinect v1 colour image is almost black (median brightness 2/255) while the depth is fine: it has its own infrared projector. 3D colours need a lit room.
+- The fake data for a dry run must carry real timestamps on the TF too; with stamp 0 RTAB-Map waited forever (`would require extrapolation`).
+
+### Next steps
+- Redo a short run with the room lit; check the floor height in the cloud.
+- Block 4b: the `coverage` node (route along walls and furniture on the saved 2D map) and `map3d.launch.py` with `slam_toolbox` in localization mode.
+
+---
+
 ## 2026-11-24: Explorer cleanup (no change in behaviour)
 
 ### Done

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>agv_map3d</name>
+  <version>0.1.0</version>
+  <description>3D map of the house (mission mode 2): RTAB-Map with the Kinect v1 (RGB-D), the LiDAR and the 2D SLAM pose.</description>
+  <maintainer email="riccardoschiavo003@gmail.com">riccardosch</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_sync</exec_depend>
+  <!-- kinect_v1_bringup (Kinect driver) is built in ~/kinect, sourced as an underlay -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
