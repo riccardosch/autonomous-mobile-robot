@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<!--
+  AGV navigate-to-pose tree. Same as Nav2's navigate_to_pose_w_replanning_and_recovery
+  (replan at 1 Hz, follow the path) with our own recoveries. When the robot is stuck,
+  the first thing it tries is to look again:
+    1. LookAgain: clear both costmaps (old marks, including Kinect marks behind the robot
+       that the camera cannot see to erase), wait 1 s so only what the LiDAR sees now
+       comes back, then back up 35 cm slowly (the 360 deg LiDAR checks behind) or, if
+       something is behind, turn 90 deg on the spot; wait 1.5 s so the Kinect looks at
+       the stuck place again from more than 0.5 m. Then plan again.
+    2. spin 90 deg to look around.
+    3. clear both costmaps and wait 2 s.
+  Up to 6 recoveries per goal, then the goal fails (the explorer blacklists it).
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <Sequence>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="LookAgain">
+              <ClearEntireCostmap name="ClearLocalCostmap-LookAgain" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-LookAgain" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <Wait wait_duration="1.0"/>
+              <Fallback name="BackUpOrTurn">
+                <BackUp backup_dist="0.35" backup_speed="0.10" error_code_id="{backup_code_id}"/>
+                <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+              </Fallback>
+              <Wait wait_duration="1.5"/>
+            </Sequence>
+            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Sequence name="ClearAll">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <Wait wait_duration="2.0"/>
+            </Sequence>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

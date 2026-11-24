@@ -5,6 +5,43 @@ The *current* state of each part lives in the READMEs; this file keeps the histo
 
 ---
 
+## 2026-11-20 / 2026-11-21: Kinect depth in the costmaps, autonomous exploration
+
+### Done
+- `agv_perception_depth`: C++ node `depth_obstacles`, Kinect depth image → one pixel in 4 → points in `base_footprint` → obstacles (5-15 cm high, 0.5-1.5 m ahead) and floor clouds. About 5% of one core. Checked live: floor flat (pitch error ~0.1°), real objects marked.
+- Costmaps: LiDAR in an ObstacleLayer, Kinect in a Spatio-Temporal Voxel Layer (marks fade within ~2 s when the camera sees the place empty, otherwise after 30 s local / 60 s global). Local costmap with 2.5 cm cells and the real radius (0.17 m + 1 cm); global costmap on the SLAM map with an optimistic radius (0.15 m), so passages with a few cm per side are proposed and the local costmap decides.
+- Own behavior tree: when stuck, clear the local costmap, back up 35 cm, wait 2 s (the Kinect sees the place face on from more than 0.5 m), plan again; then clear all and wait; then spin.
+- `agv_explore`: C++ node `explorer`, frontier exploration with no user goals. Frontiers on the SLAM map, best one close and ahead of the robot, goal 0.8 m in front of the frontier facing it (safe spot on the global costmap), goals replaced without stopping, blacklist for unreachable or unseeable frontiers, map saved to `~/maps` at the end (`.pgm`/`.yaml` and `slam_toolbox` pose graph).
+- Speed 0.2 m/s and 0.8 rad/s.
+- Tested without the robot: synthetic depth images through the whole chain into the costmap; a simulated house (fake Nav2, map revealed by ray casting) for the explorer.
+- Robot run `prova3` (2026-11-21): the room explored in 2.0 min, no frontier blacklisted, one stop solved by the back-up-and-look recovery, map saved. Remaining frontiers all under 25 cm.
+
+### Learned
+- A low obstacle under the LiDAR plane makes the wheels slip; the odometry, then the SLAM, lose the robot's place on the map. The Kinect has to cover what the LiDAR cannot see.
+- With a 2D voxel/obstacle layer the LiDAR rays clear the Kinect's marks on a low box; with a persistent 3D layer the Kinect's marks never go away and fill the costmap (63% of the free space was forbidden in the first exploration). Marks must fade, but not while the obstacle is in the Kinect's blind zone (< 0.5 m).
+- The Kinect only adds value below the LiDAR plane and close by: at 2-2.5 m its few-cm errors thickened walls and closed passages.
+- `collision ahead` from Regulated Pure Pursuit is about the next 1.5 s of the path, not the current position. Spinning near obstacles fails too; backing up and looking again works.
+- The planner needs the goal on a spot where the robot fits: a frontier cell is usually against a wall.
+- A launch argument like `5` becomes an integer; a node parameter declared as double then aborts the node at start.
+- A parameter file key must match the node's full name: `depth_obstacles:` does not match `/kinect/depth_obstacles`, and the whole file was silently ignored. Until this was found (after `prova3`), every robot run had the Kinect at the old code defaults (2.5 m, 25 cm), which explains phantom marks a few cm in front of walls. Now `/**:` and code defaults equal to the file.
+- Simulating the world around the real node found a race (arrival reported before the map update) that would have been hard to see on the robot.
+- One failed plan is not proof that a place is unreachable: an open door was blacklisted at the first `Failed to create plan` and the exploration ended. Frontiers are now retried up to 3 times, 20 s apart.
+- `slam_toolbox/save_map` starts `map_saver`, which gives up if `/map` does not arrive within 2 s; the explorer now writes the map files itself.
+- `collision ahead` was right: a read-only recorder on the robot (Regulated Pure Pursuit's `/lookahead_collision_arc` against the local costmap) found the outline 1-2 cm into cells of chair legs that the LiDAR confirmed. The path was wrong, not the check: NavFn with an optimistic planning radius hugged obstacles. Now Smac 2D with the real radius; on a fake doorway the path is centred.
+- A robot can get boxed in by memories: Kinect marks behind it (the camera cannot look there to erase them) and a slightly blurred SLAM map put cells 1-3 cm from its outline, so the planner, the spin and the back-up all refused. The first recovery now clears both costmaps, then backs up or, if something is really behind, turns.
+- Regulated Pure Pursuit ramps from the measured speed: with `max_angular_accel` 2.0 a turn on the spot started at 0.1 rad/s (0.34 rad/s per wheel, below what moves them), the measured rate stayed 0 and so did the robot (`collision ahead` and `Failed to make progress` while turning). Now 20, the wheel ramp is in `agv_odometry`.
+- A frontier still open after looking at it from 0.8 m is not unreachable: the robot now drives up to it before giving up (one run ended after 40 s because of this).
+
+### Not done yet
+- Kinect `max_height` is 0.15 m, assumed: the robot's real top height is to be measured.
+- Odometry tape-measure check (postponed since 2026-11-19).
+
+### Next steps
+- 3D map with RTAB-Map (Kinect + LiDAR + odometry) during the exploration (mission mode 2), then objects and rooms.
+- Localization on a saved map.
+
+---
+
 ## 2026-11-20: Nav2 with the LiDAR
 
 ### Done

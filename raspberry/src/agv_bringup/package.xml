@@ -16,7 +16,10 @@
   <exec_depend>nav2_bt_navigator</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
-  <exec_depend>nav2_navfn_planner</exec_depend>
+  <exec_depend>nav2_smac_planner</exec_depend>
+  <exec_depend>agv_perception_depth</exec_depend>
+  <exec_depend>spatio_temporal_voxel_layer</exec_depend>
+  <!-- kinect_v1_bringup (Kinect driver) is built in ~/kinect, sourced as an underlay -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <!-- micro_ros_agent is built in ~/microros_ws (not a rosdep key) -->

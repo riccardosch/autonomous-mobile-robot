@@ -88,7 +88,9 @@ Model, dimensions and launch instructions: [agv_description](raspberry/src/agv_d
 | Robot launch + SLAM (`agv_bringup`, `slam_toolbox`) | ✅ 2D map of a room built on 2026-11-16 |
 | Kinect perception (`kinect_v1_perception`) | ✅ Sound direction, sound type (YAMNet), objects (YOLO26n) |
 | Navigation (Nav2, `nav.launch.py`) | ✅ Goals from RViz, goes around obstacles seen by the LiDAR |
-| Kinect depth in the costmap | ⏳ Next: obstacles below the LiDAR plane |
+| Kinect depth in the costmap (`agv_perception_depth`, Spatio-Temporal Voxel Layer) | ✅ Low obstacles marked, forgotten once seen gone |
+| Autonomous exploration (`agv_explore`) | ✅ Explores a room by itself and saves the map (2026-11-21) |
+| 3D map (RTAB-Map) | ⏳ Next |
 | ESP32-C3 enclosure (OpenSCAD) | ✅ STLs generated |
 | LiDAR bracket (Fusion) | 🔍 To check: tolerances and mounting |
 

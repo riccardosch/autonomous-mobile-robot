@@ -48,24 +48,37 @@ ros2 run nav2_map_server map_saver_cli -f ~/casa        # writes casa.pgm and ca
 `nav.launch.py` starts everything in `robot.launch.py` (with SLAM) plus Nav2: you give a goal on the map and the robot plans a path and drives there, around obstacles.
 
 ```bash
-ros2 launch agv_bringup nav.launch.py
+source ~/kinect/install/setup.bash          # Kinect driver workspace, before the AGV one
+source ~/agv/autonomous-mobile-robot/raspberry/install/setup.bash
+ros2 launch agv_bringup nav.launch.py                 # LiDAR + Kinect depth
+ros2 launch agv_bringup nav.launch.py kinect:=false   # LiDAR only
 ```
 
-Needs `sudo apt install ros-jazzy-navigation2`. Do **not** run `teleop_twist_keyboard` at the same time: both publish `/cmd_vel`.
+Needs `sudo apt install ros-jazzy-navigation2`. With `kinect:=true` it also starts the Kinect driver (depth only; `kinect_rgb:=true` for the colour image) and [agv_perception_depth](../agv_perception_depth/). Only one process can own the Kinect: stop `perception.launch.py` first. Do **not** run `teleop_twist_keyboard` at the same time: both publish `/cmd_vel`.
 
 | Started | Does |
 |---|---|
-| `planner_server` (NavFn) | Path from the robot to the goal on the global costmap; replanned every second |
-| `controller_server` (Regulated Pure Pursuit) | Follows the path: `/cmd_vel`, at most 0.15 m/s and 0.6 rad/s; turns on the spot first, slows near obstacles |
-| `behavior_server` | Recoveries when stuck: spin, back up 30 cm, wait |
+| `planner_server` (Smac 2D) | Path from the robot to the goal on the global costmap, kept away from obstacles; replanned every second |
+| `controller_server` (Regulated Pure Pursuit) | Follows the path: `/cmd_vel`, at most 0.20 m/s and 0.8 rad/s; turns on the spot first, slows near obstacles, stops if its footprint would hit an obstacle within 1.5 s (`collision ahead`) |
+| `behavior_server` | Recoveries when stuck: back up 35 cm, wait, spin |
 | `bt_navigator` | The `/navigate_to_pose` action: plan → follow → recover |
 | `lifecycle_manager_navigation` | Configures and activates the four servers; prints `Managed nodes are active` |
 
-Costmaps ([config/nav2.yaml](config/nav2.yaml)): the robot is a circle of radius 0.17 m, obstacles are inflated by 0.35 m.
-- **global** (frame `map`): the SLAM map + obstacles from `/scan` + inflation. Unknown space can be planned through.
-- **local** (frame `odom`, 3 × 3 m around the robot): obstacles from `/scan` + inflation.
+Costmaps ([config/nav2.yaml](config/nav2.yaml)):
+- **global** (frame `map`, for planning): the SLAM map + live obstacles + inflation. Unknown space can be planned through.
+- **local** (frame `odom`, 3 × 3 m around the robot, 2.5 cm cells, for following the path): live obstacles + inflation.
 
-Obstacles are seen only in the LiDAR plane, about 13 cm above the floor: lower or overhanging ones are invisible until the Kinect depth is added.
+Live obstacles, in both, are forgotten once they are gone:
+- `/scan` (ObstacleLayer): marks what the LiDAR hits, clears every cell a beam passes through.
+- `/kinect/depth_obstacles/points` (Spatio-Temporal Voxel Layer, `sudo apt install ros-jazzy-spatio-temporal-voxel-layer`): obstacles 5-15 cm high, below the LiDAR plane, up to 1.5 m ahead. A mark fades within ~2 s when the camera looks at the place and it is empty (people, pets), otherwise after 30 s (local) or 60 s (global): a low obstacle is remembered while the robot passes it in the Kinect's blind zone (closer than 0.5 m).
+
+Margins (2026-11-21): both costmaps use the real radius, 0.17 m + 1 cm padding; past it the cost falls off up to 0.55 m (`cost_scaling_factor` 4). The planner is **Smac 2D**, which adds the cell cost to every step (`cost_travel_multiplier` 2): paths keep to the middle of passages and go around obstacles when there is room. Checked on a fake map: through a 60 cm doorway the path is centred (13 cm per side), through 40 cm it is centred (3 cm per side); through 45 cm, approached diagonally, it was one 5 cm map cell off centre, and there the local costmap (2.5 cm cells, live sensors) decides. Regulated Pure Pursuit checks the next 1.0 s of motion (`collision ahead`); it slows near obstacles, so the check gets short and it can creep past them. Its acceleration limits are high on purpose (`agv_odometry` ramps the wheels): with `max_angular_accel` 2.0 it ramped from the measured turn rate and, from standstill, asked only 0.1 rad/s, too little to move the wheels, so it never started turning.
+
+History: NavFn with an optimistic 0.15 m radius for planning brushed chair legs 1-2 cm from the robot outline, and the controller refused every such path (recorded 11 times on 2026-11-21, the obstacle confirmed by the LiDAR each time).
+
+Recoveries ([behavior_trees/navigate_to_pose_agv.xml](behavior_trees/navigate_to_pose_agv.xml)), in turn, up to 6 per goal: **look again** (clear both costmaps, so Kinect marks left behind the robot, which the camera cannot see to erase, are gone; wait 1 s for what the LiDAR sees now; back up 35 cm slowly or, if something is behind, turn 90° on the spot; wait 1.5 s so the Kinect looks at the stuck place again from more than 0.5 m), spin 90°, clear both costmaps and wait. On 2026-11-21 the robot was stuck with old marks 1-3 cm from its outline on three sides and an object 9 cm behind: planning, spinning and backing up were all refused.
+
+At most 0.20 m/s and 0.8 rad/s.
 
 In RViz on the PC, besides the displays for mapping: **Map** `/global_costmap/costmap` and `/local_costmap/costmap` (Color Scheme = costmap), **Path** `/plan`. Then **2D Goal Pose** in the toolbar: click and drag on the map for position and heading.
 

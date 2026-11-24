@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>agv_explore</name>
+  <version>0.1.0</version>
+  <description>Autonomous exploration: drives the robot to the frontiers of the SLAM map with Nav2 until the house is mapped, then saves the map.</description>
+  <maintainer email="riccardoschiavo003@gmail.com">riccardosch</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>slam_toolbox</depend>
+  <depend>tf2_ros</depend>
+
+  <exec_depend>agv_bringup</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

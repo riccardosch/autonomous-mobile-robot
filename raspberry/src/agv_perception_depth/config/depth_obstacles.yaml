@@ -1,0 +1,15 @@
+# Heights are above the floor (base_footprint). The robot body is 80 mm high,
+# the LiDAR 130 mm and the Kinect ~125 mm. The Kinect is only needed below the
+# LiDAR plane (~13 cm): above it the LiDAR sees obstacles better and farther.
+# The node runs as /kinect/depth_obstacles: a plain `depth_obstacles:` key would not
+# match it and every value here would be silently ignored (it was, until 2026-11-21).
+/**:
+  ros__parameters:
+    target_frame: base_footprint
+    step: 4            # 640x480 -> 160x120 pixels
+    rate_hz: 10.0
+    min_range: 0.5     # m; the Kinect v1 gives no depth closer than ~0.5 m
+    max_range: 1.5     # m; enough to stop at 0.2 m/s, and depth errors grow with distance
+    min_height: 0.05   # m; lower = floor. A 1 deg pitch error moves the floor 4 cm at 2.5 m
+    max_height: 0.15   # m; the robot is ~15 cm high, the LiDAR covers the rest
+    floor_band: 0.03   # m; |z| below this = floor, used to clear obstacles that went away
